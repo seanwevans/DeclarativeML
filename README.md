@@ -109,6 +109,20 @@ When code becomes available:
 Install the Python dependencies with `pip install -r requirements.txt` and then
 run `pytest` from the repository root to verify the test suite passes.
 
+### CLI Usage
+
+The repository includes a simple command line interface for compiling DSL files
+into SQL. You can provide a file path or pipe DSL text via standard input:
+
+```bash
+# From a file
+python -m dsl.cli path/to/model.dsl
+
+# From stdin
+echo "TRAIN MODEL example USING decision_tree FROM data PREDICT y WITH FEATURES(x)" | \
+    python -m dsl.cli
+```
+
 See `AGENTS.md` for more on our autonomous approach to managing the project.
 
 ## Architecture Documents
