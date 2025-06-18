@@ -65,6 +65,7 @@ CREATE AGENT overfitting_monitor
 
 ## Getting Started
 
+
 DeclarativeML is still in the conceptual and design stage. There are no
 published packages or binaries yet, but the following environment is planned for
 our first prototypes.
@@ -87,6 +88,9 @@ Detailed setup instructions will be added as the repository evolves.
 In the meantime, feel free to read through the design documents and open issues
 to discuss ideas or questions.
 
+DeclarativeML is under active development. The core components are evolving, but you can explore the design docs below.
+
+
 ## Contributing
 
 We welcome community contributions and feedback. While the codebase is under
@@ -104,10 +108,10 @@ See `AGENTS.md` for more on our autonomous approach to managing the project.
 
 ## Architecture Documents
 
-- `AGENTS.md` - Autonomous agent design and coordination patterns
-- `DSL.md` - Domain-specific language specification *(coming soon)*
-- `EXTENSIONS.md` - PostgreSQL extension architecture *(coming soon)*
-- `DISTRIBUTED.md` - Two-tier coordination design *(coming soon)*
+- [`AGENTS.md`](AGENTS.md) - Autonomous agent design and coordination patterns
+- [`DSL.md`](DSL.md) - Domain-specific language specification
+- [`EXTENSIONS.md`](EXTENSIONS.md) - PostgreSQL extension architecture
+- [`DISTRIBUTED.md`](DISTRIBUTED.md) - Two-tier coordination design
 
 ---
 
