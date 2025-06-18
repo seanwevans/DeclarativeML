@@ -1,17 +1,20 @@
-import unittest
 import os
 import sys
+import unittest
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from dsl import parser
+
+from dsl import parser  # noqa: E402
 from lark.exceptions import LarkError
 from hypothesis import given, strategies as st
+
 
 class TestParser(unittest.TestCase):
     def test_parse_train_model(self):
         text = (
-            "TRAIN MODEL fraud_detector USING logistic_regression(regularization=0.01) FROM transactions "
+            "TRAIN MODEL fraud_detector USING logistic_regression("
+            "regularization=0.01) FROM transactions "
             "PREDICT is_fraud WITH FEATURES(amount, merchant_type)"
         )
         model = parser.parse(text)
@@ -35,6 +38,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.source, "training_data")
         self.assertEqual(model.target, "outcome")
         self.assertEqual(model.features, ["a", "b"])
+
 
     def test_invalid_syntax_raises(self):
         with self.assertRaises(LarkError):
@@ -69,6 +73,7 @@ def test_property_based_parse(model_name, algorithm, source, target, feature):
     model = parser.parse(text)
     assert model.name == model_name
     assert model.algorithm == algorithm
+
 
 if __name__ == "__main__":
     unittest.main()
