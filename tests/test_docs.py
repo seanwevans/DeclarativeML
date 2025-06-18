@@ -1,6 +1,5 @@
 import os
 import re
-import glob
 
 DOC_FILES = [
     'README.md',
