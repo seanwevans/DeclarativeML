@@ -79,7 +79,7 @@ Datum tensor_send(PG_FUNCTION_ARGS);
 Datum tensor_recv(PG_FUNCTION_ARGS);
 
 // Model serialization
-Datum model_in(PG_FUNCTION_ARGS);  
+Datum model_in(PG_FUNCTION_ARGS);
 Datum model_out(PG_FUNCTION_ARGS);
 Datum model_serialize(PG_FUNCTION_ARGS);
 Datum model_deserialize(PG_FUNCTION_ARGS);
@@ -101,18 +101,18 @@ DeclarativeTensor* tensor_matmul(DeclarativeTensor *a, DeclarativeTensor *b) {
     if (cuda_available() && tensor_size(a) > CUDA_THRESHOLD) {
         return cuda_matmul(a, b);
     }
-    
+
     // Fallback to optimized BLAS
     if (blas_available()) {
         return blas_matmul(a, b);
     }
-    
+
     // Pure C implementation
     return cpu_matmul(a, b);
 }
 
 // Gradient computation for backpropagation
-DeclarativeTensor* compute_gradient(DeclarativeModel *model, 
+DeclarativeTensor* compute_gradient(DeclarativeModel *model,
                                    DeclarativeTensor *input,
                                    DeclarativeTensor *target) {
     // Automatic differentiation implementation
@@ -121,7 +121,7 @@ DeclarativeTensor* compute_gradient(DeclarativeModel *model,
 }
 
 // Optimized loss functions
-float8 cross_entropy_loss(DeclarativeTensor *predictions, 
+float8 cross_entropy_loss(DeclarativeTensor *predictions,
                          DeclarativeTensor *targets) {
     // Numerically stable cross-entropy implementation
     // Uses log-sum-exp trick to prevent overflow
@@ -139,40 +139,40 @@ Datum ml_train_model(PG_FUNCTION_ARGS) {
     char *training_query = PG_GETARG_CSTRING(2);
     ArrayType *feature_columns = PG_GETARG_ARRAYTYPE_P(3);
     char *target_column = PG_GETARG_CSTRING(4);
-    
+
     // Execute training query to get data
     SPITupleTable *training_data = execute_training_query(training_query);
-    
+
     // Convert to tensor format
     DeclarativeTensor *X = extract_features(training_data, feature_columns);
     DeclarativeTensor *y = extract_target(training_data, target_column);
-    
+
     // Initialize model based on algorithm
     DeclarativeModel *model = create_model(algorithm, X->shape[1]);
-    
+
     // Training loop
     TrainingConfig config = parse_training_config(algorithm_params);
     for (int epoch = 0; epoch < config.max_epochs; epoch++) {
         // Forward pass
         DeclarativeTensor *predictions = forward_pass(model, X);
-        
+
         // Compute loss
         float8 loss = compute_loss(predictions, y, config.loss_function);
-        
+
         // Backward pass and parameter update
         DeclarativeTensor *gradients = compute_gradient(model, X, y);
         update_parameters(model, gradients, config.learning_rate);
-        
+
         // Check convergence
         if (check_convergence(loss, config.tolerance)) break;
-        
+
         // Emit training progress event
         emit_training_event(model_name, epoch, loss);
     }
-    
+
     // Store trained model
     store_model(model_name, model);
-    
+
     PG_RETURN_BOOL(true);
 }
 ```
@@ -194,18 +194,18 @@ typedef struct DeclarativeEvent {
 Datum publish_event(PG_FUNCTION_ARGS) {
     char *event_type = PG_GETARG_CSTRING(0);
     char *payload = PG_GETARG_CSTRING(1);
-    
+
     DeclarativeEvent *event = create_event(event_type, payload);
-    
+
     // Store in local event log
     store_local_event(event);
-    
+
     // Propagate to CockroachDB coordination layer
     propagate_to_coordination_layer(event);
-    
+
     // Notify local subscribers
     notify_local_subscribers(event);
-    
+
     PG_RETURN_BOOL(true);
 }
 
@@ -213,13 +213,13 @@ Datum publish_event(PG_FUNCTION_ARGS) {
 Datum subscribe_to_events(PG_FUNCTION_ARGS) {
     char *event_pattern = PG_GETARG_CSTRING(0);
     char *handler_function = PG_GETARG_CSTRING(1);
-    
+
     // Register subscription in system catalog
     register_subscription(event_pattern, handler_function);
-    
+
     // Set up trigger for matching events
     create_event_trigger(event_pattern, handler_function);
-    
+
     PG_RETURN_BOOL(true);
 }
 ```
@@ -240,28 +240,28 @@ typedef struct DistributedTrainingState {
 Datum aggregate_gradients(PG_FUNCTION_ARGS) {
     char *training_id = PG_GETARG_CSTRING(0);
     DeclarativeTensor *local_gradients = PG_GETARG_TENSOR(1);
-    
+
     DistributedTrainingState *state = get_training_state(training_id);
-    
+
     // Add local gradients to global accumulator
     tensor_add_inplace(state->global_gradients, local_gradients);
-    
+
     // Mark this worker as ready
     int worker_id = get_worker_id();
     state->worker_ready[worker_id] = true;
-    
+
     // Check if all workers are ready
     if (all_workers_ready(state)) {
         // Average gradients
         tensor_scale(state->global_gradients, 1.0 / state->num_workers);
-        
+
         // Broadcast averaged gradients to all workers
         broadcast_gradients(training_id, state->global_gradients);
-        
+
         // Reset for next iteration
         reset_training_state(state);
     }
-    
+
     PG_RETURN_TENSOR(state->global_gradients);
 }
 ```
@@ -282,14 +282,14 @@ typedef struct DSLFunction {
 
 // Register DSL functions at extension load time
 void register_dsl_functions(void) {
-    register_dsl_function("TRAIN MODEL", "ml_train_model", 5, 
+    register_dsl_function("TRAIN MODEL", "ml_train_model", 5,
                          (Oid[]){TEXTOID, TEXTOID, TEXTOID, TEXTARRAYOID, TEXTOID},
                          false);
-    
+
     register_dsl_function("PREDICT USING", "ml_predict", 3,
                          (Oid[]){TEXTOID, TEXTOID, TEXTOID},
                          false);
-    
+
     register_dsl_function("EVALUATE MODEL", "ml_evaluate_model", 4,
                          (Oid[]){TEXTOID, TEXTOID, TEXTARRAYOID, JSONBOID},
                          false);
@@ -298,16 +298,16 @@ void register_dsl_functions(void) {
 // DSL query transformation
 Datum transform_dsl_query(PG_FUNCTION_ARGS) {
     char *dsl_query = PG_GETARG_CSTRING(0);
-    
+
     // Parse DSL syntax tree
     DSLParseTree *tree = parse_dsl_query(dsl_query);
-    
+
     // Transform to SQL
     StringInfo sql_query = transform_to_sql(tree);
-    
+
     // Optimize for ML workloads
     sql_query = optimize_ml_query(sql_query);
-    
+
     PG_RETURN_CSTRING(sql_query->data);
 }
 ```
@@ -344,7 +344,7 @@ DeclarativeTensor* tensor_addref(DeclarativeTensor *tensor) {
 void tensor_release(DeclarativeTensor *tensor) {
     TensorRef *ref = get_tensor_ref(tensor);
     ref->ref_count--;
-    
+
     if (ref->ref_count == 0 && !ref->is_pinned) {
         // Free tensor memory
         if (tensor->data) pfree(tensor->data);
@@ -363,7 +363,7 @@ void tensor_release(DeclarativeTensor *tensor) {
 ```sql
 -- Create extension with all components
 CREATE EXTENSION declarative_ml_core CASCADE;
-CREATE EXTENSION declarative_algorithms CASCADE;  
+CREATE EXTENSION declarative_algorithms CASCADE;
 CREATE EXTENSION declarative_coordination CASCADE;
 CREATE EXTENSION declarative_dsl CASCADE;
 
@@ -399,18 +399,18 @@ void _PG_init(void) {
     if (cuda_runtime_available()) {
         load_cuda_functions();
     }
-    
+
     // Initialize BLAS
     if (blas_available()) {
         init_blas_threading();
     }
-    
+
     // Set up memory contexts
     init_ml_memory();
-    
+
     // Register background workers for coordination
     register_coordination_workers();
-    
+
     // Initialize event system
     init_event_system();
 }
@@ -424,25 +424,25 @@ void _PG_init(void) {
 // Custom planner hook for ML operations
 PlannedStmt* ml_planner_hook(Query *parse, int cursorOptions, ParamListInfo boundParams) {
     PlannedStmt *result;
-    
+
     // Check if query contains ML operations
     if (contains_ml_operations(parse)) {
         // Apply ML-specific optimizations
         parse = optimize_ml_query_tree(parse);
-        
+
         // Consider data locality for distributed operations
         if (is_distributed_ml_query(parse)) {
             parse = optimize_data_locality(parse);
         }
     }
-    
+
     // Call standard planner
     if (prev_planner_hook) {
         result = prev_planner_hook(parse, cursorOptions, boundParams);
     } else {
         result = standard_planner(parse, cursorOptions, boundParams);
     }
-    
+
     return result;
 }
 ```

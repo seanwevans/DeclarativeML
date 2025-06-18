@@ -5,11 +5,11 @@ from typing import Any, Dict, List, Optional
 
 from lark import Lark, Transformer, v_args
 
-
 dsl_grammar = r"""
 ?start: train_stmt
 
-train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME features option*
+train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME \
+            "PREDICT" NAME features option*
 
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
@@ -61,6 +61,7 @@ class ValidationOption:
 @dataclass
 class OptimizeOption:
     metric: str
+
 
 @dataclass
 class TrainModel:
@@ -155,7 +156,15 @@ class TreeToModel(Transformer):
         return items[0]
 
     @v_args(inline=True)
-    def train_stmt(self, model_name, algorithm, source, target, features, *options):
+    def train_stmt(
+        self,
+        model_name,
+        algorithm,
+        source,
+        target,
+        features,
+        *options,
+    ):
         alg_name, params = algorithm
         model = TrainModel(
             name=model_name,
@@ -191,7 +200,7 @@ def compile_sql(model: TrainModel) -> str:
     params_dict = {k: v for k, v in model.params}
     params_json = json.dumps(params_dict)
     training_query = (
-        f"SELECT {feature_cols}, {model.target} FROM {model.source}"
+        "SELECT " + f"{feature_cols}, {model.target} " + f"FROM {model.source}"
     )
     feature_array = ", ".join(repr(f) for f in model.features)
     args = [
@@ -210,9 +219,8 @@ def compile_sql(model: TrainModel) -> str:
         if model.validate.method:
             args.append(f"validate_method := {repr(model.validate.method)}")
             if model.validate.params:
-                args.append(
-                    f"validate_params := {repr(json.dumps(dict(model.validate.params)))}"
-                )
+                params_json = json.dumps(dict(model.validate.params))
+                args.append(f"validate_params := {repr(params_json)}")
     if model.optimize_metric:
         args.append(f"optimize_metric := {repr(model.optimize_metric)}")
     if model.stop_condition:

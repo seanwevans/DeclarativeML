@@ -1,13 +1,13 @@
 import argparse
 import sys
 
-from .parser import parse, compile_sql
+from .parser import compile_sql, parse
 
 
 def main(argv: list[str] | None = None) -> int:
     """Compile DeclarativeML DSL to SQL."""
     parser = argparse.ArgumentParser(
-        description="Compile DeclarativeML DSL to SQL"
+        description="Compile DeclarativeML DSL to SQL",
     )
     parser.add_argument(
         "source",

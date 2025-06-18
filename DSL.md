@@ -112,7 +112,7 @@ WHEN EVENT 'data.drift_detected'
   THEN BEGIN
     RETRAIN MODEL recommendation_engine
       USING LATEST 90 days OF data;
-    
+
     IF retraining_accuracy < previous_accuracy * 0.95 THEN
       ROLLBACK TO previous_version
       AND ALERT ml_team('Retraining failed - manual review needed');
@@ -128,7 +128,7 @@ CREATE AGENT performance_monitor
   FOR MODEL fraud_detector
   CHECK METRICS EVERY 1 hour
   WHEN accuracy DROPS BELOW 0.85
-    OR precision DROPS BELOW 0.80  
+    OR precision DROPS BELOW 0.80
     OR data_drift EXCEEDS 0.2
   THEN TRIGGER retraining_workflow
   AND NOTIFY on_call_engineer;
@@ -233,7 +233,7 @@ SELECT compare_models(
                  | "DERIVED" <function_call>
 
 <training_options> ::= <balance_clause>
-                     | <split_clause> 
+                     | <split_clause>
                      | <validation_clause>
                      | <optimization_clause>
                      | <stopping_clause>
@@ -252,14 +252,14 @@ TRAIN MODEL fraud_detector
   PREDICT is_fraudulent
   WITH FEATURES (amount, merchant_type, time_of_day);
 
--- Compiled SQL Output  
+-- Compiled SQL Output
 SELECT ml_train_model(
   model_name := 'fraud_detector',
   algorithm := 'logistic_regression',
   algorithm_params := '{"regularization": 0.01}',
-  training_data := $$ 
-    SELECT amount, merchant_type, time_of_day, is_fraudulent 
-    FROM transactions 
+  training_data := $$
+    SELECT amount, merchant_type, time_of_day, is_fraudulent
+    FROM transactions
   $$,
   target_column := 'is_fraudulent',
   feature_columns := ARRAY['amount', 'merchant_type', 'time_of_day']
@@ -323,7 +323,7 @@ EXPLAIN PREDICTION fraud_detector
 -- Continuous monitoring setup
 MONITOR MODEL customer_churn
   FOR drift_detection ON features (age, tenure, monthly_spend)
-  AND performance_degradation ON accuracy, f1_score  
+  AND performance_degradation ON accuracy, f1_score
   CHECK FREQUENCY daily
   ALERT WHEN drift_score > 0.3 OR accuracy < 0.85;
 ```
@@ -354,7 +354,7 @@ TRAIN MODEL robust_example
   WITH FALLBACK (
     -- If OOM, try smaller network
     ON memory_error RETRY WITH layers=[100, 50, 10],
-    -- If convergence fails, try different optimizer  
+    -- If convergence fails, try different optimizer
     ON convergence_failure RETRY WITH optimizer=adam
   )
   MAX RETRIES 3;
@@ -378,7 +378,7 @@ WITH customer_features AS (
 ),
 enriched_features AS (
   SELECT *,
-         CASE WHEN last_order > CURRENT_DATE - INTERVAL '30 days' 
+         CASE WHEN last_order > CURRENT_DATE - INTERVAL '30 days'
               THEN 'recent' ELSE 'dormant' END as recency_segment
   FROM customer_features
 )
