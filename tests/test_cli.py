@@ -1,7 +1,8 @@
 import os
-import sys
 import subprocess
+import sys
 import unittest
+
 
 class TestCLI(unittest.TestCase):
     def test_cli_stdin(self):
@@ -20,6 +21,7 @@ class TestCLI(unittest.TestCase):
         )
         output = result.stdout.decode()
         self.assertIn("ml_train_model", output)
+
 
 if __name__ == "__main__":
     unittest.main()

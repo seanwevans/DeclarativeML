@@ -5,16 +5,16 @@ from typing import Any, Dict, List, Optional
 
 from lark import Lark, Transformer, v_args
 
-
 dsl_grammar = r"""
 ?start: train_stmt
 
-train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME features option*
+train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME \
+            "PREDICT" NAME features option*
 
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
 param: NAME "=" value
-value: NUMBER | ESCAPED_STRING | NAME
+value: SIGNED_NUMBER | ESCAPED_STRING | NAME
 
 features: "WITH" "FEATURES" "(" feature_list? ")"
 feature_list: NAME ("," NAME)*
@@ -30,7 +30,7 @@ stop_stmt: "STOP" "WHEN" condition_expr
 split_stmt: "SPLIT" "DATA" split_entries
 
 split_entries: split_entry ("," split_entry)*
-split_entry: NAME "=" NUMBER
+split_entry: NAME "=" SIGNED_NUMBER
 
 ?condition_expr: or_expr
 ?or_expr: and_expr ("OR" and_expr)*
@@ -39,7 +39,7 @@ comparison: NAME COMP_OP value
 COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 
 %import common.CNAME -> NAME
-%import common.NUMBER
+%import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
 %import common.WS
 %ignore WS
@@ -62,6 +62,7 @@ class ValidationOption:
 class OptimizeOption:
     metric: str
 
+
 @dataclass
 class TrainModel:
     name: str
@@ -80,7 +81,7 @@ class TreeToModel(Transformer):
     def NAME(self, token):
         return str(token)
 
-    def NUMBER(self, token):
+    def SIGNED_NUMBER(self, token):
         text = token.value
         return float(text) if "." in text else int(text)
 
@@ -155,7 +156,15 @@ class TreeToModel(Transformer):
         return items[0]
 
     @v_args(inline=True)
-    def train_stmt(self, model_name, algorithm, source, target, features, *options):
+    def train_stmt(
+        self,
+        model_name,
+        algorithm,
+        source,
+        target,
+        features,
+        *options,
+    ):
         alg_name, params = algorithm
         model = TrainModel(
             name=model_name,
@@ -191,7 +200,7 @@ def compile_sql(model: TrainModel) -> str:
     params_dict = {k: v for k, v in model.params}
     params_json = json.dumps(params_dict)
     training_query = (
-        f"SELECT {feature_cols}, {model.target} FROM {model.source}"
+        "SELECT " + f"{feature_cols}, {model.target} " + f"FROM {model.source}"
     )
     feature_array = ", ".join(repr(f) for f in model.features)
     args = [
@@ -210,9 +219,8 @@ def compile_sql(model: TrainModel) -> str:
         if model.validate.method:
             args.append(f"validate_method := {repr(model.validate.method)}")
             if model.validate.params:
-                args.append(
-                    f"validate_params := {repr(json.dumps(dict(model.validate.params)))}"
-                )
+                params_json = json.dumps(dict(model.validate.params))
+                args.append(f"validate_params := {repr(params_json)}")
     if model.optimize_metric:
         args.append(f"optimize_metric := {repr(model.optimize_metric)}")
     if model.stop_condition:

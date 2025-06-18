@@ -1,13 +1,13 @@
 import argparse
 import sys
 
-from .parser import parse, compile_sql
+from .parser import compile_sql, parse
 
 
 def main(argv: list[str] | None = None) -> int:
     """Compile DeclarativeML DSL to SQL."""
     parser = argparse.ArgumentParser(
-        description="Compile DeclarativeML DSL to SQL"
+        description="Compile DeclarativeML DSL to SQL",
     )
     parser.add_argument(
         "source",
@@ -24,7 +24,9 @@ def main(argv: list[str] | None = None) -> int:
 
     model = parse(text)
     sql = compile_sql(model)
-    sys.stdout.write(sql)
+    # Print the generated SQL with a trailing newline to ensure a clean output
+    # when redirecting to files or piping to other commands.
+    sys.stdout.write(sql + "\n")
     return 0
 
 
