@@ -23,16 +23,16 @@ class TestParser(unittest.TestCase):
 
     def test_parse_train_model_no_params(self):
         text = (
-            "TRAIN MODEL x USING logistic_regression FROM data "
-            "PREDICT y WITH FEATURES(a)"
+            "TRAIN MODEL simple_model USING decision_tree FROM training_data "
+            "PREDICT outcome WITH FEATURES(a, b)"
         )
         model = parser.parse(text)
-        self.assertEqual(model.name, "x")
-        self.assertEqual(model.algorithm, "logistic_regression")
+        self.assertEqual(model.name, "simple_model")
+        self.assertEqual(model.algorithm, "decision_tree")
         self.assertEqual(model.params, [])
-        self.assertEqual(model.source, "data")
-        self.assertEqual(model.target, "y")
-        self.assertEqual(model.features, ["a"])
+        self.assertEqual(model.source, "training_data")
+        self.assertEqual(model.target, "outcome")
+        self.assertEqual(model.features, ["a", "b"])
 
 if __name__ == "__main__":
     unittest.main()
