@@ -21,7 +21,7 @@ DeclarativeML brings machine learning directly into the database layer using a n
 ## Core Principles
 
 1. **Database-Native Everything**: All ML operations, coordination, and state management happen within the database layer
-2. **Declarative DSL**: Express ML workflows in natural language that compiles to optimized database operations  
+2. **Declarative DSL**: Express ML workflows in natural language that compiles to optimized database operations
 3. **Performance Boundaries**: Only performance-critical kernels (matrix multiplication, CUDA operations) execute outside the database
 4. **Event-Driven Coordination**: Pub/sub messaging with worker pools eliminates synchronization bottlenecks
 5. **Autonomous Operation**: Database agents handle optimization, monitoring, and lifecycle management
@@ -32,7 +32,7 @@ DeclarativeML brings machine learning directly into the database layer using a n
 -- Train a model with natural language syntax
 TRAIN MODEL fraud_detector
   USING neural_network(layers=[128, 64, 32])
-  FROM transactions  
+  FROM transactions
   PREDICT is_fraudulent
   WITH FEATURES (amount, merchant_category, time_of_day, user_history)
   BALANCE CLASSES BY oversampling
@@ -40,7 +40,7 @@ TRAIN MODEL fraud_detector
   OPTIMIZE FOR recall
   STOP WHEN recall > 0.90 OR epochs > 100;
 
--- Deploy and monitor automatically  
+-- Deploy and monitor automatically
 WHEN MODEL fraud_detector CONVERGED
   DEPLOY TO real_time_scoring
   NOTIFY ops_team
@@ -59,7 +59,7 @@ CREATE AGENT overfitting_monitor
 
 **Current Focus:**
 - Database schema design for ML primitives
-- DSL parser and SQL compilation 
+- DSL parser and SQL compilation
 - PostgreSQL extension framework
 - Pub/sub messaging system implementation
 
@@ -108,6 +108,21 @@ When code becomes available:
 
 Install the Python dependencies with `pip install -r requirements.txt` and then
 run `pytest` from the repository root to verify the test suite passes.
+
+### Linting and Formatting
+
+This project uses [pre-commit](https://pre-commit.com/) to run Black, isort and
+Flake8. After installing the dependencies, install the git hook:
+
+```bash
+pre-commit install
+```
+
+Run all checks manually with:
+
+```bash
+pre-commit run --all-files
+```
 
 ### CLI Usage
 
