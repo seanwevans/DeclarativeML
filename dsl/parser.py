@@ -14,7 +14,7 @@ train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME fe
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
 param: NAME "=" value
-value: NUMBER | ESCAPED_STRING | NAME
+value: SIGNED_NUMBER | ESCAPED_STRING | NAME
 
 features: "WITH" "FEATURES" "(" feature_list? ")"
 feature_list: NAME ("," NAME)*
@@ -30,7 +30,7 @@ stop_stmt: "STOP" "WHEN" condition_expr
 split_stmt: "SPLIT" "DATA" split_entries
 
 split_entries: split_entry ("," split_entry)*
-split_entry: NAME "=" NUMBER
+split_entry: NAME "=" SIGNED_NUMBER
 
 ?condition_expr: or_expr
 ?or_expr: and_expr ("OR" and_expr)*
@@ -39,7 +39,7 @@ comparison: NAME COMP_OP value
 COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 
 %import common.CNAME -> NAME
-%import common.NUMBER
+%import common.SIGNED_NUMBER
 %import common.ESCAPED_STRING
 %import common.WS
 %ignore WS
@@ -80,7 +80,7 @@ class TreeToModel(Transformer):
     def NAME(self, token):
         return str(token)
 
-    def NUMBER(self, token):
+    def SIGNED_NUMBER(self, token):
         text = token.value
         return float(text) if "." in text else int(text)
 

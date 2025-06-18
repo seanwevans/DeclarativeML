@@ -73,6 +73,14 @@ class TestParser(unittest.TestCase):
         model = parser.parse(text)
         self.assertEqual(model.params, [("num", 1), ("rate", 0.5), ("name", "x")])
 
+    def test_negative_param_values(self):
+        text = (
+            "TRAIN MODEL m USING alg(alpha=-0.1, depth=-5) FROM t "
+            "PREDICT y WITH FEATURES(a)"
+        )
+        model = parser.parse(text)
+        self.assertEqual(model.params, [("alpha", -0.1), ("depth", -5)])
+
 
 @given(
     model_name=st.text(min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)),
