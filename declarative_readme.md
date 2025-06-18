@@ -1,0 +1,87 @@
+# DeclarativeML
+
+**The Database that Learns: Native Machine Learning Through Declarative SQL**
+
+DeclarativeML is a ground-up redesign of machine learning infrastructure for the post-Moore's Law era. When datasets become too large to move and compute becomes the bottleneck, ML workloads will shift from "move data to compute" back to "move compute to data." We're building the database-native ML platform for that future.
+
+## Vision
+
+Traditional ML frameworks require moving massive datasets into memory, managing distributed training across clusters, and coordinating complex pipelines across multiple systems. As datasets grow exponentially while compute plateaus, this approach becomes untenable.
+
+DeclarativeML brings machine learning directly into the database layer using a natural language DSL that extends SQL. Train models, deploy inference, and manage ML workflows using declarative statements that read like English but execute with database-level performance and reliability.
+
+## Architecture
+
+**Two-Tier Distributed Design:**
+- **PostgreSQL Layer**: Handles blocking/synchronous operations (training iterations, local state, feature computation)
+- **CockroachDB Layer**: Manages non-blocking coordination (model checkpoints, metadata, global state)
+- **Pub/Sub Coordination**: Event-driven architecture with worker pools for model assembly and deployment
+- **Autonomous Agents**: Database-native processes that handle convergence detection, hyperparameter tuning, and system optimization
+
+## Core Principles
+
+1. **Database-Native Everything**: All ML operations, coordination, and state management happen within the database layer
+2. **Declarative DSL**: Express ML workflows in natural language that compiles to optimized database operations  
+3. **Performance Boundaries**: Only performance-critical kernels (matrix multiplication, CUDA operations) execute outside the database
+4. **Event-Driven Coordination**: Pub/sub messaging with worker pools eliminates synchronization bottlenecks
+5. **Autonomous Operation**: Database agents handle optimization, monitoring, and lifecycle management
+
+## Example DSL Syntax
+
+```sql
+-- Train a model with natural language syntax
+TRAIN MODEL fraud_detector
+  USING neural_network(layers=[128, 64, 32])
+  FROM transactions  
+  PREDICT is_fraudulent
+  WITH FEATURES (amount, merchant_category, time_of_day, user_history)
+  BALANCE CLASSES BY oversampling
+  VALIDATE USING cross_validation(folds=5)
+  OPTIMIZE FOR recall
+  STOP WHEN recall > 0.90 OR epochs > 100;
+
+-- Deploy and monitor automatically  
+WHEN MODEL fraud_detector CONVERGED
+  DEPLOY TO real_time_scoring
+  NOTIFY ops_team
+  SCHEDULE retraining IN 30 days;
+
+-- Create autonomous monitoring agents
+CREATE AGENT overfitting_monitor
+  CHECK MODEL fraud_detector EVERY 10 epochs
+  WHEN validation_loss INCREASES FOR 3 consecutive_checks
+  THEN stop_training AND rollback_to_best_checkpoint;
+```
+
+## Status
+
+🚧 **Early Development** - Building core architecture and DSL compiler
+
+**Current Focus:**
+- Database schema design for ML primitives
+- DSL parser and SQL compilation 
+- PostgreSQL extension framework
+- Pub/sub messaging system implementation
+
+## Getting Started
+
+*Coming Soon* - We're in active development building the foundational architecture.
+
+## Contributing
+
+We're building in the open and welcome contributors who share our vision of database-native machine learning. See `AGENTS.md` for our autonomous development process.
+
+## Architecture Documents
+
+- `AGENTS.md` - Autonomous agent design and coordination patterns
+- `DSL.md` - Domain-specific language specification *(coming soon)*
+- `EXTENSIONS.md` - PostgreSQL extension architecture *(coming soon)*
+- `DISTRIBUTED.md` - Two-tier coordination design *(coming soon)*
+
+---
+
+*"The future of machine learning is declarative, distributed, and database-native."*
+
+## Project Repository
+
+This is **DeclarativeML** - transforming how we think about machine learning infrastructure.
