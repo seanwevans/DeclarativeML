@@ -45,6 +45,7 @@ COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 %ignore WS
 """
 
+
 @dataclass
 class DataSplit:
     ratios: Dict[str, float]
@@ -84,7 +85,7 @@ class TreeToModel(Transformer):
         return float(text) if "." in text else int(text)
 
     def ESCAPED_STRING(self, token):
-        return token.value.strip("\"")
+        return token.value.strip('"')
 
     def value(self, items):
         return items[0]
@@ -189,7 +190,9 @@ def compile_sql(model: TrainModel) -> str:
     feature_cols = ", ".join(model.features)
     params_dict = {k: v for k, v in model.params}
     params_json = json.dumps(params_dict)
-    training_query = f"SELECT {feature_cols}, {model.target} FROM {model.source}"
+    training_query = (
+        f"SELECT {feature_cols}, {model.target} FROM {model.source}"
+    )
     feature_array = ", ".join(repr(f) for f in model.features)
     args = [
         f"model_name := {repr(model.name)}",
