@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import Any, List
 
 from lark import Lark, Transformer, v_args
 
@@ -30,7 +30,7 @@ feature_list: NAME ("," NAME)*
 class TrainModel:
     name: str
     algorithm: str
-    params: List[tuple[str, str]]
+    params: List[tuple[str, Any]]
     source: str
     target: str
     features: List[str]
@@ -41,10 +41,14 @@ class TreeToModel(Transformer):
         return str(token)
 
     def NUMBER(self, token):
-        return token.value
+        text = token.value
+        return float(text) if "." in text else int(text)
 
     def ESCAPED_STRING(self, token):
-        return token.value
+        return token.value.strip("\"")
+
+    def value(self, items):
+        return items[0]
 
     def param(self, items):
         name, value = items
@@ -85,13 +89,16 @@ def parse(text: str) -> TrainModel:
 
 
 def compile_sql(model: TrainModel) -> str:
+    import json
+
     feature_cols = ", ".join(model.features)
-    params = "{" + ", ".join(f'"{k}": {v}' for k, v in model.params) + "}"
+    params_dict = {k: v for k, v in model.params}
+    params_json = json.dumps(params_dict)
     sql = (
         "SELECT ml_train_model("
         f"model_name := '{model.name}', "
         f"algorithm := '{model.algorithm}', "
-        f"algorithm_params := '{params}', "
+        f"algorithm_params := '{params_json}', "
         f"training_data := 'SELECT {feature_cols}, {model.target} FROM {model.source}', "
         f"target_column := '{model.target}', "
         f"feature_columns := ARRAY[{', '.join([f'\'{f}\'' for f in model.features])}]"
