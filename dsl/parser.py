@@ -11,7 +11,7 @@ dsl_grammar = r"""
 
 train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME features
 
-algorithm: NAME "(" param_list? ")"
+algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
 param: NAME "=" value
 value: NUMBER | ESCAPED_STRING | NAME
