@@ -11,7 +11,9 @@ dsl_grammar = r"""
 
 train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME features
 
-algorithm: NAME "(" param_list? ")"
+# The algorithm specification can be either just a name or
+# a name followed by an optional parenthesized parameter list.
+algorithm: NAME ["(" param_list? ")"]
 param_list: param ("," param)*
 param: NAME "=" value
 value: NUMBER | ESCAPED_STRING | NAME
@@ -59,7 +61,10 @@ class TreeToModel(Transformer):
 
     def algorithm(self, items):
         alg_name = items[0]
-        params = items[1] if len(items) > 1 else []
+        if len(items) == 1 or items[1] is None:
+            params = []
+        else:
+            params = items[1]
         return alg_name, params
 
     def feature_list(self, items):
