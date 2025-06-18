@@ -9,7 +9,7 @@ from lark import Lark, Transformer, v_args
 dsl_grammar = r"""
 ?start: train_stmt
 
-train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME features
+train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME "PREDICT" NAME features  # noqa: E501
 
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
@@ -25,6 +25,7 @@ feature_list: NAME ("," NAME)*
 %import common.WS
 %ignore WS
 """
+
 
 @dataclass
 class TrainModel:
@@ -45,7 +46,7 @@ class TreeToModel(Transformer):
         return float(text) if "." in text else int(text)
 
     def ESCAPED_STRING(self, token):
-        return token.value.strip("\"")
+        return token.value.strip('"')
 
     def value(self, items):
         return items[0]
@@ -97,7 +98,9 @@ def compile_sql(model: TrainModel) -> str:
     feature_cols = ", ".join(model.features)
     params_dict = {k: v for k, v in model.params}
     params_json = json.dumps(params_dict)
-    training_query = f"SELECT {feature_cols}, {model.target} FROM {model.source}"
+    training_query = (
+        f"SELECT {feature_cols}, {model.target} FROM {model.source}"
+    )
     feature_array = ", ".join(repr(f) for f in model.features)
     sql = (
         "SELECT ml_train_model("
