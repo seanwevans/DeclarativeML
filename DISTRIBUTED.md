@@ -12,7 +12,7 @@ DeclarativeML uses a two-tier distributed architecture that separates blocking/s
 - **Coordination**: Event-driven through pub/sub messaging
 - **Scaling**: Horizontal scaling through instance replication
 
-### Tier 2: CockroachDB Coordination Layer  
+### Tier 2: CockroachDB Coordination Layer
 - **Purpose**: Global state management, metadata coordination, async orchestration
 - **Characteristics**: Distributed consensus, strong consistency, automated failover
 - **Operations**: Model checkpoints, training coordination, resource allocation
@@ -28,18 +28,18 @@ DeclarativeML uses a two-tier distributed architecture that separates blocking/s
 FOR epoch IN 1..max_epochs LOOP
   -- Forward pass using local data and model state
   predictions := forward_pass(model, batch_data);
-  
+
   -- Compute gradients locally
   gradients := compute_gradients(predictions, targets);
-  
+
   -- Update local model parameters
-  UPDATE model_weights 
+  UPDATE model_weights
   SET weights = apply_gradients(weights, gradients, learning_rate)
   WHERE model_name = current_model;
-  
+
   -- Only coordinate when epoch complete
   IF epoch % sync_frequency = 0 THEN
-    PUBLISH EVENT 'training.epoch_complete' 
+    PUBLISH EVENT 'training.epoch_complete'
       WITH PAYLOAD {
         'instance_id': pg_instance_id,
         'model_name': current_model,
@@ -146,18 +146,18 @@ graph TB
     PG1[PostgreSQL Instance 1] --> MSG[Message Bus]
     PG2[PostgreSQL Instance 2] --> MSG
     PG3[PostgreSQL Instance 3] --> MSG
-    
+
     MSG --> COORD[CockroachDB Coordination]
     COORD --> WORKERS[Worker Pool]
-    
+
     WORKERS --> AGG[Gradient Aggregation]
     WORKERS --> DEPLOY[Model Deployment]
     WORKERS --> SCHED[Training Scheduler]
-    
+
     AGG --> COORD
     DEPLOY --> COORD
     SCHED --> COORD
-    
+
     COORD --> PG1
     COORD --> PG2
     COORD --> PG3
@@ -178,14 +178,14 @@ BEGIN
   -- Store locally for durability
   INSERT INTO local_event_log (event_type, model_name, payload, created_at)
   VALUES (event_type, model_name, payload, NOW());
-  
+
   -- Send to coordination layer via async queue
   INSERT INTO outbound_message_queue (
     destination, event_type, payload, priority
   ) VALUES (
-    'coordination_layer', event_type, 
+    'coordination_layer', event_type,
     payload || jsonb_build_object('instance_id', instance_id),
-    CASE event_type 
+    CASE event_type
       WHEN 'training.epoch_complete' THEN 3
       WHEN 'training.converged' THEN 1
       ELSE 5
@@ -207,22 +207,22 @@ BEGIN
         training_id, instance_id, epoch, gradients
       ) VALUES (
         NEW.payload->>'model_name',
-        NEW.payload->>'instance_id', 
+        NEW.payload->>'instance_id',
         (NEW.payload->>'epoch')::INT,
         decode(NEW.payload->>'gradients', 'base64')
       );
-      
+
       -- Check if all workers ready for this epoch
       SELECT COUNT(*) INTO ready_count
-      FROM gradient_aggregation_queue 
+      FROM gradient_aggregation_queue
       WHERE training_id = NEW.payload->>'model_name'
         AND epoch = (NEW.payload->>'epoch')::INT
         AND processed = FALSE;
-      
+
       SELECT expected_workers INTO training_state
       FROM training_coordination
       WHERE training_id = NEW.payload->>'model_name';
-      
+
       -- Trigger gradient aggregation if all workers ready
       IF ready_count >= training_state.expected_workers THEN
         INSERT INTO workload_queue (
@@ -234,15 +234,15 @@ BEGIN
           1 -- High priority
         );
       END IF;
-      
+
     WHEN 'training.converged' THEN
       -- Update model registry with final weights
-      UPDATE model_registry 
+      UPDATE model_registry
       SET current_version = current_version + 1,
           performance_metrics = NEW.payload->'final_metrics',
           last_checkpoint = NOW()
       WHERE model_name = NEW.payload->>'model_name';
-      
+
       -- Trigger deployment workflow
       INSERT INTO workload_queue (
         workload_id, workload_type, model_name, priority
@@ -253,7 +253,7 @@ BEGIN
         2
       );
   END CASE;
-  
+
   RETURN NEW;
 END;
 $ LANGUAGE plpgsql;
@@ -283,50 +283,50 @@ BEGIN
   SELECT w.model_name INTO model_name
   FROM workload_queue w
   WHERE w.workload_id = gradient_aggregation_worker.workload_id;
-  
+
   -- Get current epoch from coordination state
   SELECT current_epoch INTO current_epoch
-  FROM training_coordination 
+  FROM training_coordination
   WHERE training_id = model_name;
-  
+
   -- Collect all gradients for this epoch
-  FOR gradient_data IN 
-    SELECT instance_id, gradients 
+  FOR gradient_data IN
+    SELECT instance_id, gradients
     FROM gradient_aggregation_queue
-    WHERE training_id = model_name 
+    WHERE training_id = model_name
       AND epoch = current_epoch
       AND processed = FALSE
   LOOP
     -- Aggregate gradients (implemented in extension)
     aggregated_gradients := aggregate_gradient_bytes(
-      aggregated_gradients, 
+      aggregated_gradients,
       gradient_data.gradients
     );
     worker_count := worker_count + 1;
   END LOOP;
-  
+
   -- Average the gradients
   aggregated_gradients := scale_gradient_bytes(
-    aggregated_gradients, 
+    aggregated_gradients,
     1.0 / worker_count
   );
-  
+
   -- Store aggregated result
   UPDATE training_coordination
   SET global_model_weights = aggregated_gradients,
       assembly_status = 'ready_for_broadcast'
   WHERE training_id = model_name;
-  
+
   -- Mark gradients as processed
   UPDATE gradient_aggregation_queue
   SET processed = TRUE
   WHERE training_id = model_name AND epoch = current_epoch;
-  
+
   -- Broadcast updated weights to all PostgreSQL instances
   INSERT INTO broadcast_queue (
     target_instances, message_type, payload
-  ) 
-  SELECT 
+  )
+  SELECT
     training_instances,
     'weight_update',
     jsonb_build_object(
@@ -336,7 +336,7 @@ BEGIN
     )
   FROM training_coordination
   WHERE training_id = model_name;
-  
+
   RETURN TRUE;
 END;
 $ LANGUAGE plpgsql;
@@ -347,7 +347,7 @@ $ LANGUAGE plpgsql;
 ```sql
 -- Automated model deployment workflow
 CREATE OR REPLACE FUNCTION model_deployment_worker(
-  workload_id STRING  
+  workload_id STRING
 ) RETURNS BOOL AS $
 DECLARE
   model_info RECORD;
@@ -360,24 +360,24 @@ BEGIN
   FROM workload_queue wq
   JOIN model_registry mr ON wq.model_name = mr.model_name
   WHERE wq.workload_id = model_deployment_worker.workload_id;
-  
+
   -- Get deployment configuration
   SELECT deployment_settings INTO deployment_config
   FROM model_deployment_config
   WHERE model_name = model_info.model_name;
-  
+
   -- Validate model performance before deployment
-  IF (model_info.performance_metrics->>'accuracy')::FLOAT < 
+  IF (model_info.performance_metrics->>'accuracy')::FLOAT <
      (deployment_config->>'min_accuracy')::FLOAT THEN
     -- Mark deployment as failed
     UPDATE workload_queue
     SET status = 'failed',
         completed_at = NOW()
     WHERE workload_id = model_deployment_worker.workload_id;
-    
+
     RETURN FALSE;
   END IF;
-  
+
   -- Select target instances for deployment
   SELECT ARRAY_AGG(instance_id) INTO target_instances
   FROM postgres_instances
@@ -386,7 +386,7 @@ BEGIN
     AND current_load < (deployment_config->>'max_load_threshold')::FLOAT
   ORDER BY current_load
   LIMIT (deployment_config->>'target_instance_count')::INT;
-  
+
   -- Deploy to selected instances
   INSERT INTO deployment_queue (
     model_name, model_version, target_instances, deployment_config
@@ -396,7 +396,7 @@ BEGIN
     target_instances,
     deployment_config
   );
-  
+
   -- Create monitoring agents for deployed model
   INSERT INTO agent_spawn_queue (
     agent_type, model_name, configuration
@@ -409,7 +409,7 @@ BEGIN
       'target_instances', target_instances
     )
   );
-  
+
   RETURN TRUE;
 END;
 $ LANGUAGE plpgsql;
@@ -441,7 +441,7 @@ DECLARE
 BEGIN
   -- Extract source tables from query
   source_tables := extract_tables_from_query(training_query);
-  
+
   -- For each source table, find optimal instances
   FOR locality_info IN
     SELECT table_name, preferred_instances
@@ -454,7 +454,7 @@ BEGIN
       get_available_instances_for_table(locality_info.table_name)
     );
   END LOOP;
-  
+
   -- Fallback to load-based assignment if no locality info
   IF array_length(optimal_instances, 1) IS NULL THEN
     SELECT ARRAY_AGG(instance_id) INTO optimal_instances
@@ -463,7 +463,7 @@ BEGIN
     ORDER BY current_load
     LIMIT get_training_parallelism(model_name);
   END IF;
-  
+
   RETURN optimal_instances;
 END;
 $ LANGUAGE plpgsql;
@@ -492,12 +492,12 @@ BEGIN
   UPDATE shared_cache_registry
   SET expiry_time = NOW()
   WHERE cache_key LIKE cache_pattern;
-  
+
   -- Send invalidation messages to all instances
   INSERT INTO broadcast_queue (
     target_instances, message_type, payload
   )
-  SELECT 
+  SELECT
     ARRAY_AGG(DISTINCT instance_id),
     'cache_invalidation',
     jsonb_build_object('pattern', cache_pattern)
@@ -529,10 +529,10 @@ BEGIN
     UPDATE postgres_instances
     SET status = 'failed'
     WHERE instance_id = failed_instance.instance_id;
-    
+
     -- Get affected models
     affected_models := failed_instance.current_models;
-    
+
     -- Reassign training workloads
     FOR model_name IN SELECT unnest(affected_models) LOOP
       -- Find replacement instances
@@ -540,7 +540,7 @@ BEGIN
         workload_id, workload_type, model_name, priority,
         resource_requirements
       )
-      SELECT 
+      SELECT
         gen_random_uuid()::STRING,
         'training_migration',
         model_name,
@@ -552,7 +552,7 @@ BEGIN
       FROM training_coordination
       WHERE training_id = model_name;
     END LOOP;
-    
+
     -- Notify administrators
     INSERT INTO alert_queue (
       alert_type, severity, message
@@ -575,7 +575,7 @@ DECLARE
   model_checkpoint BYTES;
 BEGIN
   -- Get migration details
-  SELECT 
+  SELECT
     w.resource_requirements->>'failed_instance' AS failed_instance,
     w.model_name,
     tc.global_model_weights
@@ -583,7 +583,7 @@ BEGIN
   FROM workload_queue w
   JOIN training_coordination tc ON w.model_name = tc.training_id
   WHERE w.workload_id = migrate_training_workload.workload_id;
-  
+
   -- Find suitable replacement instance
   SELECT instance_id INTO replacement_instance
   FROM postgres_instances
@@ -592,7 +592,7 @@ BEGIN
     AND instance_id != migration_info.failed_instance
   ORDER BY current_load
   LIMIT 1;
-  
+
   -- Transfer model state to replacement instance
   INSERT INTO model_transfer_queue (
     target_instance, model_name, model_weights, transfer_type
@@ -602,7 +602,7 @@ BEGIN
     migration_info.global_model_weights,
     'failure_recovery'
   );
-  
+
   -- Update training coordination
   UPDATE training_coordination
   SET training_instances = array_replace(
@@ -611,7 +611,7 @@ BEGIN
     replacement_instance
   )
   WHERE training_id = migration_info.model_name;
-  
+
   RETURN TRUE;
 END;
 $ LANGUAGE plpgsql;
@@ -635,7 +635,7 @@ CREATE TABLE performance_metrics (
 
 -- Real-time performance dashboard data
 CREATE MATERIALIZED VIEW cluster_performance_summary AS
-SELECT 
+SELECT
   instance_id,
   AVG(CASE WHEN metric_type = 'training_throughput' THEN metric_value END) as avg_training_throughput,
   AVG(CASE WHEN metric_type = 'query_latency' THEN metric_value END) as avg_query_latency,
@@ -673,27 +673,27 @@ BEGIN
   FROM workload_queue
   WHERE status IN ('pending', 'running')
     AND created_at > NOW() - INTERVAL '10 minutes';
-  
+
   -- Calculate target instance count
   target_instances := CASE
     WHEN queue_depth > 50 AND avg_completion_time > INTERVAL '5 minutes' THEN
       LEAST(current_instances * 2, 20) -- Scale up, max 20 instances
     WHEN queue_depth < 10 AND avg_completion_time < INTERVAL '1 minute' THEN
-      GREATEST(current_instances / 2, 3) -- Scale down, min 3 instances  
+      GREATEST(current_instances / 2, 3) -- Scale down, min 3 instances
     ELSE current_instances -- No scaling needed
   END;
-  
+
   SELECT COUNT(*) INTO current_instances
-  FROM postgres_instances 
+  FROM postgres_instances
   WHERE status = 'active';
-  
+
   -- Trigger scaling if needed
   IF target_instances != current_instances THEN
     INSERT INTO scaling_requests (
       current_count, target_count, reason, created_at
     ) VALUES (
       current_instances,
-      target_instances, 
+      target_instances,
       'workload_based_scaling',
       NOW()
     );

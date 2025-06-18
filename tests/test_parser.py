@@ -2,12 +2,13 @@ import os
 import sys
 import unittest
 
+from hypothesis import given
+from hypothesis import strategies as st
+from lark.exceptions import LarkError
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-
 from dsl import parser  # noqa: E402
-from lark.exceptions import LarkError
-from hypothesis import given, strategies as st
 
 
 class TestParser(unittest.TestCase):
@@ -39,10 +40,10 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.target, "outcome")
         self.assertEqual(model.features, ["a", "b"])
 
-
     def test_parse_train_model_with_options(self):
         text = (
-            "TRAIN MODEL m USING alg() FROM data PREDICT y WITH FEATURES(f1, f2) "
+            "TRAIN MODEL m USING alg() FROM data PREDICT y "
+            "WITH FEATURES(f1, f2) "
             "SPLIT DATA training=0.7, validation=0.2, test=0.1 "
             "VALIDATE USING cv(folds=5) OPTIMIZE FOR accuracy "
             "STOP WHEN accuracy > 0.9"
@@ -55,7 +56,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.optimize_metric, "accuracy")
         self.assertEqual(model.stop_condition, "accuracy > 0.9")
 
-
     def test_invalid_syntax_raises(self):
         with self.assertRaises(LarkError):
             parser.parse("TRAIN MODEL bad USING algo FROM tbl")
@@ -67,11 +67,18 @@ class TestParser(unittest.TestCase):
 
     def test_algorithm_param_types(self):
         text = (
-            "TRAIN MODEL m USING alg(num=1, rate=0.5, name=\"x\") FROM t "
+            'TRAIN MODEL m USING alg(num=1, rate=0.5, name="x") FROM t '
             "PREDICT y WITH FEATURES(a)"
         )
         model = parser.parse(text)
-        self.assertEqual(model.params, [("num", 1), ("rate", 0.5), ("name", "x")])
+        self.assertEqual(
+            model.params,
+            [
+                ("num", 1),
+                ("rate", 0.5),
+                ("name", "x"),
+            ],
+        )
 
     def test_negative_param_values(self):
         text = (
@@ -83,11 +90,21 @@ class TestParser(unittest.TestCase):
 
 
 @given(
-    model_name=st.text(min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)),
-    algorithm=st.text(min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)),
-    source=st.text(min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)),
-    target=st.text(min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)),
-    feature=st.text(min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122))
+    model_name=st.text(
+        min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)
+    ),
+    algorithm=st.text(
+        min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)
+    ),
+    source=st.text(
+        min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)
+    ),
+    target=st.text(
+        min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)
+    ),
+    feature=st.text(
+        min_size=1, alphabet=st.characters(min_codepoint=97, max_codepoint=122)
+    ),
 )
 def test_property_based_parse(model_name, algorithm, source, target, feature):
     text = (
@@ -97,7 +114,6 @@ def test_property_based_parse(model_name, algorithm, source, target, feature):
     model = parser.parse(text)
     assert model.name == model_name
     assert model.algorithm == algorithm
-
 
 
 if __name__ == "__main__":

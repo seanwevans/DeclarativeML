@@ -10,7 +10,7 @@ Agents in DeclarativeML are autonomous database processes that handle system opt
 
 **Training Agents**
 - Monitor model convergence and performance metrics
-- Implement early stopping and regularization strategies  
+- Implement early stopping and regularization strategies
 - Handle hyperparameter optimization and architecture search
 - Coordinate distributed training across PostgreSQL instances
 
@@ -38,7 +38,7 @@ Agents communicate through the database-native pub/sub system:
 
 ```sql
 -- Agent publishes events to coordination layer
-PUBLISH EVENT 'model.convergence.detected' 
+PUBLISH EVENT 'model.convergence.detected'
   WITH PAYLOAD {
     'model_name': 'fraud_detector',
     'final_accuracy': 0.94,
@@ -47,7 +47,7 @@ PUBLISH EVENT 'model.convergence.detected'
   };
 
 -- Other agents subscribe to relevant events
-SUBSCRIBE TO 'model.convergence.*' 
+SUBSCRIBE TO 'model.convergence.*'
   EXECUTE PROCEDURE handle_model_ready();
 ```
 
@@ -61,26 +61,26 @@ BEGIN
   DECLARE model_metrics RECORD;
   DECLARE patience_counter INTEGER := 0;
   DECLARE best_validation_loss DECIMAL := NULL;
-  
+
   -- Check every 10 training epochs
-  SCHEDULE EVERY '10 EPOCHS' 
+  SCHEDULE EVERY '10 EPOCHS'
   FOR EACH MODEL IN training_state
   DO
     SELECT validation_loss, training_loss, epoch
     INTO model_metrics
-    FROM model_training_log 
+    FROM model_training_log
     WHERE model_name = CURRENT_MODEL
     ORDER BY epoch DESC LIMIT 1;
-    
+
     -- Detect overfitting patterns
-    IF best_validation_loss IS NULL OR 
+    IF best_validation_loss IS NULL OR
        model_metrics.validation_loss < best_validation_loss THEN
       best_validation_loss := model_metrics.validation_loss;
       patience_counter := 0;
     ELSE
       patience_counter := patience_counter + 1;
     END IF;
-    
+
     -- Stop training if overfitting detected
     IF patience_counter >= 3 THEN
       PUBLISH EVENT 'training.early_stop'
@@ -89,7 +89,7 @@ BEGIN
           'reason': 'overfitting_detected',
           'best_epoch': epoch - (patience_counter * 10)
         };
-      
+
       EXECUTE stop_training(CURRENT_MODEL);
       EXECUTE rollback_to_checkpoint(CURRENT_MODEL, best_validation_loss);
     END IF;
@@ -105,20 +105,20 @@ BEGIN
   DECLARE search_space JSONB;
   DECLARE current_trial RECORD;
   DECLARE trial_results RECORD[];
-  
+
   -- Initialize Bayesian optimization search space
   SET search_space = '{
     "learning_rate": {"type": "log_uniform", "low": 0.0001, "high": 0.1},
     "batch_size": {"type": "choice", "values": [32, 64, 128, 256]},
     "dropout_rate": {"type": "uniform", "low": 0.1, "high": 0.5}
   }';
-  
+
   -- Run optimization trials
   FOR trial_id IN 1..50 LOOP
     -- Sample new hyperparameters using Bayesian optimization
     SELECT sample_hyperparameters(search_space, trial_results)
     INTO current_trial;
-    
+
     -- Launch training with sampled parameters
     PUBLISH EVENT 'training.start'
       WITH PAYLOAD {
@@ -126,15 +126,15 @@ BEGIN
         'hyperparameters': current_trial.params,
         'parent_optimization': CURRENT_OPTIMIZATION_ID
       };
-    
+
     -- Wait for training completion
     WAIT FOR EVENT 'training.complete'
       WHERE payload->>'parent_optimization' = CURRENT_OPTIMIZATION_ID;
-    
+
     -- Record trial results
     trial_results := array_append(trial_results, current_trial);
   END LOOP;
-  
+
   -- Select best configuration and deploy
   SELECT best_hyperparameters(trial_results) INTO current_trial;
   PUBLISH EVENT 'optimization.complete'
@@ -150,12 +150,12 @@ Agents coordinate through event chains without direct coupling:
 
 ```sql
 -- Training completion triggers multiple downstream agents
-ON EVENT 'training.complete' 
+ON EVENT 'training.complete'
   EXECUTE validation_agent.evaluate_model();
-  
+
 ON EVENT 'validation.passed'
   EXECUTE deployment_agent.stage_model();
-  
+
 ON EVENT 'model.staged'
   EXECUTE monitoring_agent.setup_drift_detection();
   EXECUTE notification_agent.alert_stakeholders();
@@ -167,7 +167,7 @@ Agents maintain shared state through database tables with event notifications:
 
 ```sql
 -- Agents update shared state atomically
-UPDATE agent_coordination_state 
+UPDATE agent_coordination_state
 SET current_best_model = 'fraud_detector_v3',
     last_update_timestamp = NOW(),
     update_agent = 'hyperparameter_optimizer'
@@ -209,7 +209,7 @@ BEGIN
           'failed_agent': registered_agent,
           'last_seen': last_heartbeat(registered_agent)
         };
-      
+
       EXECUTE restart_agent(registered_agent);
     END IF;
   END LOOP;
@@ -222,7 +222,7 @@ Agents embody the "database-native everything" principle by:
 
 1. **Operating entirely within database transactions** for consistency and reliability
 2. **Using stored procedures and triggers** instead of external services
-3. **Communicating through database pub/sub** rather than network protocols  
+3. **Communicating through database pub/sub** rather than network protocols
 4. **Storing all state in database tables** with proper ACID guarantees
 5. **Leveraging database scheduling** instead of external cron jobs
 
