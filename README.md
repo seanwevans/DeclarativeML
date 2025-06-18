@@ -65,11 +65,46 @@ CREATE AGENT overfitting_monitor
 
 ## Getting Started
 
+
+DeclarativeML is still in the conceptual and design stage. There are no
+published packages or binaries yet, but the following environment is planned for
+our first prototypes.
+
+### Prerequisites
+
+- **PostgreSQL 14+** with extension development headers (`pg_config` must be in
+  your `PATH`)
+- **CockroachDB** for distributed coordination (optional for local
+  experimentation)
+- **Rust** toolchain for building the DSL compiler
+
+### Building and Running
+
+The project has no runnable code today. Once the initial implementation lands
+you will be able to build the PostgreSQL extensions and the DSL compiler using
+`cargo build` and then load the generated libraries into your database instance.
+Detailed setup instructions will be added as the repository evolves.
+
+In the meantime, feel free to read through the design documents and open issues
+to discuss ideas or questions.
+
 DeclarativeML is under active development. The core components are evolving, but you can explore the design docs below.
+
 
 ## Contributing
 
-We're building in the open and welcome contributors who share our vision of database-native machine learning. See `AGENTS.md` for our autonomous development process.
+We welcome community contributions and feedback. While the codebase is under
+heavy development, the best way to participate is by opening issues to discuss
+proposed features or design changes.
+
+When code becomes available:
+
+1. Fork the repository and create a topic branch.
+2. Commit your changes with clear messages.
+3. Open a pull request against `main`.
+4. Include tests and documentation whenever possible.
+
+See `AGENTS.md` for more on our autonomous approach to managing the project.
 
 ## Architecture Documents
 
