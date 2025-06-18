@@ -24,7 +24,9 @@ def main(argv: list[str] | None = None) -> int:
 
     model = parse(text)
     sql = compile_sql(model)
-    sys.stdout.write(sql)
+    # Print the generated SQL with a trailing newline to ensure a clean output
+    # when redirecting to files or piping to other commands.
+    sys.stdout.write(sql + "\n")
     return 0
 
 
