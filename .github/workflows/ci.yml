@@ -39,6 +39,8 @@ jobs:
         with:
           python-version: '3.x'
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run pytest
-        run: pytest -q
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+      - name: Run tests
+        run: pytest -vv

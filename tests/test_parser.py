@@ -1,14 +1,9 @@
-import os
-import sys
 import unittest
 
-from hypothesis import given
-from hypothesis import strategies as st
+
+from dsl import parser
 from lark.exceptions import LarkError
-
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-from dsl import parser  # noqa: E402
+from hypothesis import given, strategies as st
 
 
 class TestParser(unittest.TestCase):

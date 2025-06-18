@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsl"
+version = "0.1.0"
+description = "DeclarativeML DSL compiler"
+authors = [{name = "DeclarativeML", email = "noreply@example.com"}]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+dependencies = [
+    "lark"
+]
+
+[project.urls]
+Homepage = "https://example.com"
+
