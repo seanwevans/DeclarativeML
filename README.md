@@ -104,6 +104,11 @@ When code becomes available:
 3. Open a pull request against `main`.
 4. Include tests and documentation whenever possible.
 
+### Running Tests
+
+Install the Python dependencies with `pip install -r requirements.txt` and then
+run `pytest` from the repository root to verify the test suite passes.
+
 See `AGENTS.md` for more on our autonomous approach to managing the project.
 
 ## Architecture Documents
