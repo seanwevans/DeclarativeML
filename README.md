@@ -77,6 +77,7 @@ our first prototypes.
 - **CockroachDB** for distributed coordination (optional for local
   experimentation)
 - **Rust** toolchain for building the DSL compiler
+- **Python 3.9+** for running the CLI and tests
 
 ### Building and Running
 

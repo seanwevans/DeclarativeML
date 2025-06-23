@@ -9,11 +9,10 @@ description = "DeclarativeML DSL compiler"
 authors = [{name = "DeclarativeML", email = "noreply@example.com"}]
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "lark"
 ]
 
 [project.urls]
 Homepage = "https://example.com"
-
