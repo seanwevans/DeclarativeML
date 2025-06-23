@@ -83,6 +83,14 @@ class TestParser(unittest.TestCase):
         model = parser.parse(text)
         self.assertEqual(model.params, [("alpha", -0.1), ("depth", -5)])
 
+    def test_balance_clause(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a) "
+            "BALANCE CLASSES BY oversampling"
+        )
+        model = parser.parse(text)
+        self.assertEqual(model.balance_method, "oversampling")
+
 
 @given(
     model_name=st.text(
