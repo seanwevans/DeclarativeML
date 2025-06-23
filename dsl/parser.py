@@ -23,6 +23,9 @@ option: validate_stmt
       | optimize_stmt
       | stop_stmt
       | split_stmt
+      | balance_stmt
+
+balance_stmt: "BALANCE" "CLASSES" "BY" NAME
 
 validate_stmt: "VALIDATE" ("USING" NAME ("(" param_list? ")")? | "ON" NAME)
 optimize_stmt: "OPTIMIZE" "FOR" NAME
@@ -64,6 +67,11 @@ class OptimizeOption:
 
 
 @dataclass
+class BalanceOption:
+    method: str
+
+
+@dataclass
 class TrainModel:
     name: str
     algorithm: str
@@ -75,6 +83,7 @@ class TrainModel:
     validate: Optional[ValidationOption] = None
     optimize_metric: Optional[str] = None
     stop_condition: Optional[str] = None
+    balance_method: Optional[str] = None
 
 
 class TreeToModel(Transformer):
@@ -124,6 +133,9 @@ class TreeToModel(Transformer):
 
     def split_stmt(self, items):
         return DataSplit(items[0])
+
+    def balance_stmt(self, items):
+        return BalanceOption(method=items[0])
 
     def validate_stmt(self, items):
         if len(items) == 1:
@@ -181,6 +193,8 @@ class TreeToModel(Transformer):
                 model.validate = opt
             elif isinstance(opt, OptimizeOption):
                 model.optimize_metric = opt.metric
+            elif isinstance(opt, BalanceOption):
+                model.balance_method = opt.method
             elif isinstance(opt, str):
                 model.stop_condition = opt
         return model
@@ -225,6 +239,8 @@ def compile_sql(model: TrainModel) -> str:
         args.append(f"optimize_metric := {repr(model.optimize_metric)}")
     if model.stop_condition:
         args.append(f"stop_condition := {repr(model.stop_condition)}")
+    if model.balance_method:
+        args.append(f"balance_method := {repr(model.balance_method)}")
 
     sql = "SELECT ml_train_model(" + ", ".join(args) + ")"
     return sql
