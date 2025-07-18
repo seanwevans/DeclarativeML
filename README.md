@@ -51,6 +51,12 @@ CREATE AGENT overfitting_monitor
   CHECK MODEL fraud_detector EVERY 10 epochs
   WHEN validation_loss INCREASES FOR 3 consecutive_checks
   THEN stop_training AND rollback_to_best_checkpoint;
+
+-- GPU compute kernels
+COMPUTE add_vectors
+  FROM table(foo, bar)
+  INTO column(baz)
+  USING vector_add BLOCK 256 GRID auto;
 ```
 
 ## Status

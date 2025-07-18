@@ -7,9 +7,27 @@ from lark import Lark, Transformer, v_args
 
 dsl_grammar = r"""
 ?start: train_stmt
+       | compute_stmt
 
 train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME \
             "PREDICT" NAME features option*
+
+compute_stmt: "COMPUTE" NAME compute_from? compute_into? compute_every? \
+              "USING" NAME kernel_opt*
+
+compute_from: "FROM" "table" "(" name_list ")"
+compute_into: "INTO" "column" "(" NAME ")"
+compute_every: "EVERY" SIGNED_NUMBER "TICKS"
+kernel_opt: block_opt
+          | grid_opt
+          | shared_opt
+
+block_opt: "BLOCK" SIGNED_NUMBER
+grid_opt: "GRID" NAME
+shared_opt: "SHARED" size_spec
+
+name_list: NAME ("," NAME)*
+size_spec: SIGNED_NUMBER NAME?
 
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
@@ -86,6 +104,16 @@ class TrainModel:
     balance_method: Optional[str] = None
 
 
+@dataclass
+class ComputeKernel:
+    name: str
+    inputs: Optional[List[str]] = None
+    output: Optional[str] = None
+    schedule_ticks: Optional[int] = None
+    kernel: str = ""
+    options: Dict[str, Any] | None = None
+
+
 class TreeToModel(Transformer):
     def NAME(self, token):
         return str(token)
@@ -123,6 +151,36 @@ class TreeToModel(Transformer):
 
     def option(self, items):
         return items[0]
+
+    def name_list(self, items):
+        return list(items)
+
+    def compute_from(self, items):
+        return ("inputs", items[0])
+
+    def compute_into(self, items):
+        return ("output", items[0])
+
+    def compute_every(self, items):
+        return ("schedule", int(items[0]))
+
+    def size_spec(self, items):
+        if len(items) == 2:
+            return f"{items[0]}{items[1]}"
+        return str(items[0])
+
+    def kernel_opt(self, items):
+        # should not be called directly
+        return items[0]
+
+    def block_opt(self, items):
+        return ("BLOCK", items[0])
+
+    def grid_opt(self, items):
+        return ("GRID", items[0])
+
+    def shared_opt(self, items):
+        return ("SHARED", items[0])
 
     def split_entry(self, items):
         name, value = items
@@ -199,48 +257,103 @@ class TreeToModel(Transformer):
                 model.stop_condition = opt
         return model
 
+    @v_args(inline=True)
+    def compute_stmt(
+        self,
+        name,
+        *parts,
+    ):
+        inputs = None
+        output = None
+        schedule = None
+        kernel_name = None
+        options: Dict[str, Any] = {}
 
-def parse(text: str) -> TrainModel:
+        for part in parts:
+            if isinstance(part, tuple) and part[0] == "inputs":
+                inputs = part[1]
+            elif isinstance(part, tuple) and part[0] == "output":
+                output = part[1]
+            elif isinstance(part, tuple) and part[0] == "schedule":
+                schedule = part[1]
+            elif isinstance(part, str) and kernel_name is None:
+                kernel_name = part
+            elif isinstance(part, tuple):
+                key, val = part
+                options[key] = val
+            else:
+                # ignore unexpected parts
+                pass
+        if kernel_name is None:
+            raise ValueError("Kernel name missing")
+        return ComputeKernel(
+            name=name,
+            inputs=inputs,
+            output=output,
+            schedule_ticks=schedule,
+            kernel=kernel_name,
+            options=options or None,
+        )
+
+
+def parse(text: str) -> Any:
     parser = Lark(dsl_grammar, start="start", parser="lalr")
     tree = parser.parse(text)
     model = TreeToModel().transform(tree)
     return model
 
 
-def compile_sql(model: TrainModel) -> str:
+def compile_sql(model: Any) -> str:
     import json
 
-    feature_cols = ", ".join(model.features)
-    params_dict = {k: v for k, v in model.params}
-    params_json = json.dumps(params_dict)
-    training_query = (
-        "SELECT " + f"{feature_cols}, {model.target} " + f"FROM {model.source}"
-    )
-    feature_array = ", ".join(repr(f) for f in model.features)
-    args = [
-        f"model_name := {repr(model.name)}",
-        f"algorithm := {repr(model.algorithm)}",
-        f"algorithm_params := {repr(params_json)}",
-        f"training_data := {repr(training_query)}",
-        f"target_column := {repr(model.target)}",
-        f"feature_columns := ARRAY[{feature_array}]",
-    ]
-    if model.split:
-        args.append(f"data_split := {repr(json.dumps(model.split.ratios))}")
-    if model.validate:
-        if model.validate.on:
-            args.append(f"validate_on := {repr(model.validate.on)}")
-        if model.validate.method:
-            args.append(f"validate_method := {repr(model.validate.method)}")
-            if model.validate.params:
-                params_json = json.dumps(dict(model.validate.params))
-                args.append(f"validate_params := {repr(params_json)}")
-    if model.optimize_metric:
-        args.append(f"optimize_metric := {repr(model.optimize_metric)}")
-    if model.stop_condition:
-        args.append(f"stop_condition := {repr(model.stop_condition)}")
-    if model.balance_method:
-        args.append(f"balance_method := {repr(model.balance_method)}")
+    if isinstance(model, TrainModel):
+        feature_cols = ", ".join(model.features)
+        params_dict = {k: v for k, v in model.params}
+        params_json = json.dumps(params_dict)
+        training_query = (
+            "SELECT " + f"{feature_cols}, {model.target} " + f"FROM {model.source}"
+        )
+        feature_array = ", ".join(repr(f) for f in model.features)
+        args = [
+            f"model_name := {repr(model.name)}",
+            f"algorithm := {repr(model.algorithm)}",
+            f"algorithm_params := {repr(params_json)}",
+            f"training_data := {repr(training_query)}",
+            f"target_column := {repr(model.target)}",
+            f"feature_columns := ARRAY[{feature_array}]",
+        ]
+        if model.split:
+            args.append(f"data_split := {repr(json.dumps(model.split.ratios))}")
+        if model.validate:
+            if model.validate.on:
+                args.append(f"validate_on := {repr(model.validate.on)}")
+            if model.validate.method:
+                args.append(f"validate_method := {repr(model.validate.method)}")
+                if model.validate.params:
+                    params_json = json.dumps(dict(model.validate.params))
+                    args.append(f"validate_params := {repr(params_json)}")
+        if model.optimize_metric:
+            args.append(f"optimize_metric := {repr(model.optimize_metric)}")
+        if model.stop_condition:
+            args.append(f"stop_condition := {repr(model.stop_condition)}")
+        if model.balance_method:
+            args.append(f"balance_method := {repr(model.balance_method)}")
 
-    sql = "SELECT ml_train_model(" + ", ".join(args) + ")"
-    return sql
+        sql = "SELECT ml_train_model(" + ", ".join(args) + ")"
+        return sql
+
+    if isinstance(model, ComputeKernel):
+        args = [f"kernel_name := {repr(model.kernel)}", f"name := {repr(model.name)}"]
+        if model.inputs:
+            inputs_array = ", ".join(repr(i) for i in model.inputs)
+            args.append(f"inputs := ARRAY[{inputs_array}]")
+        if model.output:
+            args.append(f"output := {repr(model.output)}")
+        if model.schedule_ticks is not None:
+            args.append(f"schedule_ticks := {model.schedule_ticks}")
+        if model.options:
+            args.append(f"options := {repr(json.dumps(model.options))}")
+        sql = "SELECT ml_register_compute(" + ", ".join(args) + ")"
+        return sql
+
+    raise TypeError("Unsupported model type")

@@ -91,8 +91,21 @@ WITH FEATURES (
   signup_channel,
   TRANSFORM standard_scaler(income),
   TRANSFORM one_hot_encoder(product_category),
-  TRANSFORM time_series.lag(revenue, periods=[1,7,30])
+TRANSFORM time_series.lag(revenue, periods=[1,7,30])
 );
+```
+
+### GPU Compute Kernels
+
+```sql
+COMPUTE add_vectors
+  FROM table(foo, bar)
+  INTO column(baz)
+  USING vector_add BLOCK 256 GRID auto;
+
+COMPUTE scan_peptides
+  EVERY 1000 TICKS
+  USING immune_scan SHARED 1K;
 ```
 
 ### Event-Driven Workflows
