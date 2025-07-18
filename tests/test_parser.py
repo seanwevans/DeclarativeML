@@ -91,6 +91,27 @@ class TestParser(unittest.TestCase):
         model = parser.parse(text)
         self.assertEqual(model.balance_method, "oversampling")
 
+    def test_parse_compute(self):
+        text = (
+            "COMPUTE add_vectors FROM table(foo, bar) INTO column(baz) "
+            "USING vector_add BLOCK 256 GRID auto"
+        )
+        stmt = parser.parse(text)
+        self.assertIsInstance(stmt, parser.ComputeKernel)
+        self.assertEqual(stmt.name, "add_vectors")
+        self.assertEqual(stmt.inputs, ["foo", "bar"])
+        self.assertEqual(stmt.output, "baz")
+        self.assertEqual(stmt.kernel, "vector_add")
+        self.assertEqual(stmt.options["BLOCK"], 256)
+        self.assertEqual(stmt.options["GRID"], "auto")
+
+    def test_parse_compute_every(self):
+        text = "COMPUTE scan_peptides EVERY 1000 TICKS USING immune_scan SHARED 1K"
+        stmt = parser.parse(text)
+        self.assertEqual(stmt.schedule_ticks, 1000)
+        self.assertEqual(stmt.kernel, "immune_scan")
+        self.assertEqual(stmt.options["SHARED"], "1K")
+
 
 @given(
     model_name=st.text(

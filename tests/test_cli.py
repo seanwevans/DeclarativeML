@@ -23,6 +23,23 @@ class TestCLI(unittest.TestCase):
         output = result.stdout.decode()
         self.assertIn("ml_train_model", output)
 
+    def test_cli_compute(self):
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        dsl_text = (
+            "COMPUTE add_vectors FROM table(a, b) INTO column(c) "
+            "USING vector_add BLOCK 128"
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "dsl.cli"],
+            input=dsl_text.encode(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=repo_root,
+            check=True,
+        )
+        output = result.stdout.decode()
+        self.assertIn("ml_register_compute", output)
+
     def test_cli_file(self):
         repo_root = os.path.dirname(os.path.dirname(__file__))
         dsl_text = (
