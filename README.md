@@ -113,8 +113,10 @@ When code becomes available:
 
 ### Running Tests
 
-Install the Python dependencies with `pip install -r requirements.txt` and then
-run `pytest` from the repository root to verify the test suite passes.
+Install the Python dependencies with `pip install -r requirements.txt`. After
+that, install the package in editable mode using `pip install -e .` (see
+[`pyproject.toml`](pyproject.toml) for package details). Then run `pytest` from
+the repository root to verify the test suite passes.
 
 ### Linting and Formatting
 
