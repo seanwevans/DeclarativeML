@@ -1,6 +1,8 @@
 import argparse
 import sys
 
+from lark.exceptions import LarkError
+
 from .parser import compile_sql, parse
 
 
@@ -22,8 +24,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         text = sys.stdin.read()
 
-    model = parse(text)
-    sql = compile_sql(model)
+    try:
+        model = parse(text)
+        sql = compile_sql(model)
+    except LarkError as exc:
+        print(f"Failed to parse DSL: {exc}", file=sys.stderr)
+        return 1
+
     # Print the generated SQL with a trailing newline to ensure a clean output
     # when redirecting to files or piping to other commands.
     sys.stdout.write(sql + "\n")
