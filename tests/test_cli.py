@@ -62,6 +62,18 @@ class TestCLI(unittest.TestCase):
         output = result.stdout.decode()
         self.assertIn("ml_train_model", output)
 
+    def test_cli_invalid_input(self):
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        bad_dsl = "TRAIN MODEL"
+        result = subprocess.run(
+            [sys.executable, "-m", "dsl.cli"],
+            input=bad_dsl.encode(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=repo_root,
+        )
+        self.assertNotEqual(result.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
