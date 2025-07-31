@@ -1,9 +1,10 @@
 import unittest
 
+from hypothesis import given
+from hypothesis import strategies as st
+from lark.exceptions import LarkError
 
 from dsl import parser
-from lark.exceptions import LarkError
-from hypothesis import given, strategies as st
 
 
 class TestParser(unittest.TestCase):
