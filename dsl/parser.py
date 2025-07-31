@@ -311,7 +311,7 @@ def compile_sql(model: Any) -> str:
         params_dict = {k: v for k, v in model.params}
         params_json = json.dumps(params_dict)
         training_query = (
-            "SELECT " + f"{feature_cols}, {model.target} " + f"FROM {model.source}"
+            f"SELECT {feature_cols}, {model.target} " f"FROM {model.source}"
         )
         feature_array = ", ".join(repr(f) for f in model.features)
         args = [
@@ -323,12 +323,14 @@ def compile_sql(model: Any) -> str:
             f"feature_columns := ARRAY[{feature_array}]",
         ]
         if model.split:
-            args.append(f"data_split := {repr(json.dumps(model.split.ratios))}")
+            data_split = repr(json.dumps(model.split.ratios))
+            args.append(f"data_split := {data_split}")
         if model.validate:
             if model.validate.on:
                 args.append(f"validate_on := {repr(model.validate.on)}")
             if model.validate.method:
-                args.append(f"validate_method := {repr(model.validate.method)}")
+                val_method = repr(model.validate.method)
+                args.append(f"validate_method := {val_method}")
                 if model.validate.params:
                     params_json = json.dumps(dict(model.validate.params))
                     args.append(f"validate_params := {repr(params_json)}")
@@ -343,7 +345,10 @@ def compile_sql(model: Any) -> str:
         return sql
 
     if isinstance(model, ComputeKernel):
-        args = [f"kernel_name := {repr(model.kernel)}", f"name := {repr(model.name)}"]
+        args = [
+            f"kernel_name := {repr(model.kernel)}",
+            f"name := {repr(model.name)}",
+        ]
         if model.inputs:
             inputs_array = ", ".join(repr(i) for i in model.inputs)
             args.append(f"inputs := ARRAY[{inputs_array}]")

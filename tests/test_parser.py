@@ -1,9 +1,10 @@
 import unittest
 
+from hypothesis import given
+from hypothesis import strategies as st
+from lark.exceptions import LarkError
 
 from dsl import parser
-from lark.exceptions import LarkError
-from hypothesis import given, strategies as st
 
 
 class TestParser(unittest.TestCase):
@@ -106,7 +107,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.options["GRID"], "auto")
 
     def test_parse_compute_every(self):
-        text = "COMPUTE scan_peptides EVERY 1000 TICKS USING immune_scan SHARED 1K"
+        text = " ".join(
+            [
+                "COMPUTE scan_peptides EVERY 1000 TICKS USING immune_scan",
+                "SHARED 1K",
+            ]
+        )
         stmt = parser.parse(text)
         self.assertEqual(stmt.schedule_ticks, 1000)
         self.assertEqual(stmt.kernel, "immune_scan")
