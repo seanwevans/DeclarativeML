@@ -66,6 +66,9 @@ COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 %ignore WS
 """
 
+# instantiate the parser once at module import time
+_PARSER = Lark(dsl_grammar, start="start", parser="lalr")
+
 
 @dataclass
 class DataSplit:
@@ -297,8 +300,7 @@ class TreeToModel(Transformer):
 
 
 def parse(text: str) -> Any:
-    parser = Lark(dsl_grammar, start="start", parser="lalr")
-    tree = parser.parse(text)
+    tree = _PARSER.parse(text)
     model = TreeToModel().transform(tree)
     return model
 
