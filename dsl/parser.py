@@ -285,8 +285,7 @@ class TreeToModel(Transformer):
                 key, val = part
                 options[key] = val
             else:
-                # ignore unexpected parts
-                pass
+                raise ValueError(f"Unexpected compute clause part: {part!r}")
         if kernel_name is None:
             raise ValueError("Kernel name missing")
         return ComputeKernel(
