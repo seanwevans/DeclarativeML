@@ -19,8 +19,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.source:
-        with open(args.source, "r", encoding="utf-8") as fh:
-            text = fh.read()
+        try:
+            with open(args.source, "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError as exc:
+            print(
+                f"Failed to read source file '{args.source}': {exc}",
+                file=sys.stderr,
+            )
+            return 1
     else:
         text = sys.stdin.read()
 
