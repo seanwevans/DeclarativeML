@@ -111,10 +111,10 @@ class TrainModel:
 @dataclass
 class ComputeKernel:
     name: str
+    kernel: str
     inputs: Optional[List[str]] = None
     output: Optional[str] = None
     schedule_ticks: Optional[int] = None
-    kernel: str = ""
     options: Dict[str, Any] | None = None
 
 
@@ -264,13 +264,13 @@ class TreeToModel(Transformer):
     @v_args(inline=True)
     def compute_stmt(
         self,
-        name,
-        *parts,
-    ):
-        inputs = None
-        output = None
-        schedule = None
-        kernel_name = None
+        name: str,
+        *parts: Any,
+    ) -> ComputeKernel:
+        inputs: Optional[List[str]] = None
+        output: Optional[str] = None
+        schedule: Optional[int] = None
+        kernel_name: Optional[str] = None
         options: Dict[str, Any] = {}
 
         for part in parts:
@@ -306,7 +306,7 @@ def parse(text: str) -> TrainModel | ComputeKernel:
     return cast(TrainModel | ComputeKernel, model)
 
 
-def compile_sql(model: Any) -> str:
+def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
 
     if isinstance(model, TrainModel):
