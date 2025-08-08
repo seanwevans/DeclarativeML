@@ -59,6 +59,8 @@ COMPUTE add_vectors
   USING vector_add BLOCK 256 GRID auto;
 ```
 
+A kernel name is mandatory in the `USING` clause for all `COMPUTE` statements.
+
 ## Status
 
 🚧 **Early Development** - Building core architecture and DSL compiler

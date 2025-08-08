@@ -108,6 +108,9 @@ COMPUTE scan_peptides
   USING immune_scan SHARED 1K;
 ```
 
+The `USING` clause must always specify the kernel name; it is a required
+parameter for registering a compute kernel.
+
 ### Event-Driven Workflows
 
 ```sql
