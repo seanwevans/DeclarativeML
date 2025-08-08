@@ -74,6 +74,18 @@ class TestCLI(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
 
+    def test_cli_missing_file(self):
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        missing_path = os.path.join(repo_root, "does_not_exist.dsl")
+        result = subprocess.run(
+            [sys.executable, "-m", "dsl.cli", missing_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=repo_root,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Failed to read source file", result.stderr.decode())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@ import sys
 
 from lark.exceptions import LarkError
 
-from .parser import compile_sql, parse
+from .parser import ComputeKernel, TrainModel, compile_sql, parse
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,13 +19,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.source:
-        with open(args.source, "r", encoding="utf-8") as fh:
-            text = fh.read()
+        try:
+            with open(args.source, "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError as exc:
+            print(
+                f"Failed to read source file '{args.source}': {exc}",
+                file=sys.stderr,
+            )
+            return 1
     else:
         text = sys.stdin.read()
 
     try:
-        model = parse(text)
+        model: TrainModel | ComputeKernel = parse(text)
         sql = compile_sql(model)
     except LarkError as exc:
         print(f"Failed to parse DSL: {exc}", file=sys.stderr)

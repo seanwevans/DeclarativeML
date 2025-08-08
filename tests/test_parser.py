@@ -1,4 +1,5 @@
 import unittest
+from typing import cast
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -14,7 +15,7 @@ class TestParser(unittest.TestCase):
             "regularization=0.01) FROM transactions "
             "PREDICT is_fraud WITH FEATURES(amount, merchant_type)"
         )
-        model = parser.parse(text)
+        model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.name, "fraud_detector")
         self.assertEqual(model.algorithm, "logistic_regression")
         self.assertEqual(model.source, "transactions")
@@ -28,7 +29,7 @@ class TestParser(unittest.TestCase):
             "TRAIN MODEL simple_model USING decision_tree FROM training_data "
             "PREDICT outcome WITH FEATURES(a, b)"
         )
-        model = parser.parse(text)
+        model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.name, "simple_model")
         self.assertEqual(model.algorithm, "decision_tree")
         self.assertEqual(model.params, [])
@@ -44,7 +45,7 @@ class TestParser(unittest.TestCase):
             "VALIDATE USING cv(folds=5) OPTIMIZE FOR accuracy "
             "STOP WHEN accuracy > 0.9"
         )
-        model = parser.parse(text)
+        model = cast(parser.TrainModel, parser.parse(text))
         self.assertIsNotNone(model.split)
         self.assertAlmostEqual(model.split.ratios["training"], 0.7)
         self.assertIsNotNone(model.validate)
@@ -66,7 +67,7 @@ class TestParser(unittest.TestCase):
             'TRAIN MODEL m USING alg(num=1, rate=0.5, name="x") FROM t '
             "PREDICT y WITH FEATURES(a)"
         )
-        model = parser.parse(text)
+        model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(
             model.params,
             [
@@ -81,7 +82,7 @@ class TestParser(unittest.TestCase):
             "TRAIN MODEL m USING alg(alpha=-0.1, depth=-5) FROM t "
             "PREDICT y WITH FEATURES(a)"
         )
-        model = parser.parse(text)
+        model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.params, [("alpha", -0.1), ("depth", -5)])
 
     def test_balance_clause(self):
@@ -89,7 +90,7 @@ class TestParser(unittest.TestCase):
             "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a) "
             "BALANCE CLASSES BY oversampling"
         )
-        model = parser.parse(text)
+        model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.balance_method, "oversampling")
 
     def test_parse_compute(self):
@@ -97,7 +98,7 @@ class TestParser(unittest.TestCase):
             "COMPUTE add_vectors FROM table(foo, bar) INTO column(baz) "
             "USING vector_add BLOCK 256 GRID auto"
         )
-        stmt = parser.parse(text)
+        stmt = cast(parser.ComputeKernel, parser.parse(text))
         self.assertIsInstance(stmt, parser.ComputeKernel)
         self.assertEqual(stmt.name, "add_vectors")
         self.assertEqual(stmt.inputs, ["foo", "bar"])
@@ -108,7 +109,7 @@ class TestParser(unittest.TestCase):
 
     def test_parse_compute_every(self):
         text = "COMPUTE scan_peptides EVERY 1000 TICKS USING immune_scan SHARED 1K"
-        stmt = parser.parse(text)
+        stmt = cast(parser.ComputeKernel, parser.parse(text))
         self.assertEqual(stmt.schedule_ticks, 1000)
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
@@ -123,6 +124,58 @@ class TestParser(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             transformer.compute_stmt("bad_job", "kernel", 123)
         self.assertIn("Unexpected compute clause part", str(ctx.exception))
+
+    def test_data_split_sum_validation_passes(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a, b) "
+            "SPLIT DATA train=0.8, test=0.2"
+        )
+        model = parser.parse(text)
+        self.assertIsNotNone(model.split)
+        self.assertAlmostEqual(sum(model.split.ratios.values()), 1.0)
+
+    def test_data_split_sum_validation_fails(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a, b) "
+            "SPLIT DATA train=0.6, test=0.3"
+        )
+        with self.assertRaises(ValueError):
+            parser.parse(text)
+
+
+    def test_compute_missing_kernel(self):
+        text = "COMPUTE add_vectors FROM table(foo) INTO column(bar)"
+        with self.assertRaises(LarkError):
+            parser.parse(text)
+
+    def test_compile_sql_escapes_identifiers(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="weird;table",
+            target="tar;get",
+            features=["fe;ature"],
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('"weird;table"', sql_str)
+        self.assertIn('"fe;ature"', sql_str)
+        self.assertIn('"tar;get"', sql_str)
+
+    def test_compile_sql_escapes_compute_identifiers(self):
+        stmt = parser.ComputeKernel(
+            name="name;drop",
+            inputs=["in;put"],
+            output="out;put",
+            schedule_ticks=None,
+            kernel="ker;nel",
+            options=None,
+        )
+        sql_str = parser.compile_sql(stmt)
+        self.assertIn("'name;drop'", sql_str)
+        self.assertIn("'ker;nel'", sql_str)
+        self.assertIn("'in;put'", sql_str)
+        self.assertIn("'out;put'", sql_str)
 
 
 @given(
@@ -147,7 +200,7 @@ def test_property_based_parse(model_name, algorithm, source, target, feature):
         f"TRAIN MODEL {model_name} USING {algorithm} FROM {source} "
         f"PREDICT {target} WITH FEATURES({feature})"
     )
-    model = parser.parse(text)
+    model = cast(parser.TrainModel, parser.parse(text))
     assert model.name == model_name
     assert model.algorithm == algorithm
 

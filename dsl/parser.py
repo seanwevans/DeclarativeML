@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from math import isclose
+from typing import Any, Dict, List, Optional, cast
 
 from lark import Lark, Transformer, v_args
+from lark.exceptions import VisitError
+from psycopg import sql
+
 
 dsl_grammar = r"""
 ?start: train_stmt
@@ -74,6 +78,11 @@ _PARSER = Lark(dsl_grammar, start="start", parser="lalr")
 class DataSplit:
     ratios: Dict[str, float]
 
+    def __post_init__(self) -> None:
+        total = sum(self.ratios.values())
+        if not isclose(total, 1.0, abs_tol=1e-6):
+            raise ValueError("data split ratios must sum to 1.0")
+
 
 @dataclass
 class ValidationOption:
@@ -110,10 +119,10 @@ class TrainModel:
 @dataclass
 class ComputeKernel:
     name: str
+    kernel: str
     inputs: Optional[List[str]] = None
     output: Optional[str] = None
     schedule_ticks: Optional[int] = None
-    kernel: str = ""
     options: Dict[str, Any] | None = None
 
 
@@ -263,13 +272,13 @@ class TreeToModel(Transformer):
     @v_args(inline=True)
     def compute_stmt(
         self,
-        name,
-        *parts,
-    ):
-        inputs = None
-        output = None
-        schedule = None
-        kernel_name = None
+        name: str,
+        *parts: Any,
+    ) -> ComputeKernel:
+        inputs: Optional[List[str]] = None
+        output: Optional[str] = None
+        schedule: Optional[int] = None
+        kernel_name: Optional[str] = None
         options: Dict[str, Any] = {}
 
         for part in parts:
@@ -298,63 +307,123 @@ class TreeToModel(Transformer):
         )
 
 
-def parse(text: str) -> Any:
+def parse(text: str) -> TrainModel | ComputeKernel:
     tree = _PARSER.parse(text)
-    model = TreeToModel().transform(tree)
+    try:
+        model = TreeToModel().transform(tree)
+    except VisitError as e:
+        if isinstance(e.orig_exc, ValueError):
+            raise e.orig_exc
+        raise
     return model
 
-
-def compile_sql(model: Any) -> str:
+def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
 
     if isinstance(model, TrainModel):
-        feature_cols = ", ".join(model.features)
-        params_dict = {k: v for k, v in model.params}
-        params_json = json.dumps(params_dict)
+        # build training query with properly quoted identifiers
+        field_idents = [sql.Identifier(f) for f in model.features]
+        field_idents.append(sql.Identifier(model.target))
         training_query = (
-            "SELECT " + f"{feature_cols}, {model.target} " + f"FROM {model.source}"
+            sql.SQL("SELECT {fields} FROM {source}")
+            .format(
+                fields=sql.SQL(", ").join(field_idents),
+                source=sql.Identifier(model.source),
+            )
+            .as_string(None)
         )
-        feature_array = ", ".join(repr(f) for f in model.features)
+
         args = [
-            f"model_name := {repr(model.name)}",
-            f"algorithm := {repr(model.algorithm)}",
-            f"algorithm_params := {repr(params_json)}",
-            f"training_data := {repr(training_query)}",
-            f"target_column := {repr(model.target)}",
-            f"feature_columns := ARRAY[{feature_array}]",
+            sql.SQL("model_name := {val}").format(val=sql.Literal(model.name)),
+            sql.SQL("algorithm := {val}").format(val=sql.Literal(model.algorithm)),
+            sql.SQL("algorithm_params := {val}").format(
+                val=sql.Literal(json.dumps(dict(model.params)))
+            ),
+            sql.SQL("training_data := {val}").format(val=sql.Literal(training_query)),
+            sql.SQL("target_column := {val}").format(val=sql.Literal(model.target)),
+            sql.SQL("feature_columns := ARRAY[{vals}]").format(
+                vals=sql.SQL(", ").join(sql.Literal(f) for f in model.features)
+            ),
         ]
         if model.split:
-            args.append(f"data_split := {repr(json.dumps(model.split.ratios))}")
+            args.append(
+                sql.SQL("data_split := {val}").format(
+                    val=sql.Literal(json.dumps(model.split.ratios))
+                )
+            )
         if model.validate:
             if model.validate.on:
-                args.append(f"validate_on := {repr(model.validate.on)}")
+                args.append(
+                    sql.SQL("validate_on := {val}").format(
+                        val=sql.Literal(model.validate.on)
+                    )
+                )
             if model.validate.method:
-                args.append(f"validate_method := {repr(model.validate.method)}")
+                args.append(
+                    sql.SQL("validate_method := {val}").format(
+                        val=sql.Literal(model.validate.method)
+                    )
+                )
                 if model.validate.params:
-                    params_json = json.dumps(dict(model.validate.params))
-                    args.append(f"validate_params := {repr(params_json)}")
+                    args.append(
+                        sql.SQL("validate_params := {val}").format(
+                            val=sql.Literal(json.dumps(dict(model.validate.params)))
+                        )
+                    )
         if model.optimize_metric:
-            args.append(f"optimize_metric := {repr(model.optimize_metric)}")
+            args.append(
+                sql.SQL("optimize_metric := {val}").format(
+                    val=sql.Literal(model.optimize_metric)
+                )
+            )
         if model.stop_condition:
-            args.append(f"stop_condition := {repr(model.stop_condition)}")
+            args.append(
+                sql.SQL("stop_condition := {val}").format(
+                    val=sql.Literal(model.stop_condition)
+                )
+            )
         if model.balance_method:
-            args.append(f"balance_method := {repr(model.balance_method)}")
+            args.append(
+                sql.SQL("balance_method := {val}").format(
+                    val=sql.Literal(model.balance_method)
+                )
+            )
 
-        sql = "SELECT ml_train_model(" + ", ".join(args) + ")"
-        return sql
+        query = sql.SQL("SELECT ml_train_model({args})").format(
+            args=sql.SQL(", ").join(args)
+        )
+        return query.as_string(None)
 
     if isinstance(model, ComputeKernel):
-        args = [f"kernel_name := {repr(model.kernel)}", f"name := {repr(model.name)}"]
+        args = [
+            sql.SQL("kernel_name := {val}").format(val=sql.Literal(model.kernel)),
+            sql.SQL("name := {val}").format(val=sql.Literal(model.name)),
+        ]
         if model.inputs:
-            inputs_array = ", ".join(repr(i) for i in model.inputs)
-            args.append(f"inputs := ARRAY[{inputs_array}]")
+            args.append(
+                sql.SQL("inputs := ARRAY[{vals}]").format(
+                    vals=sql.SQL(", ").join(sql.Literal(i) for i in model.inputs)
+                )
+            )
         if model.output:
-            args.append(f"output := {repr(model.output)}")
+            args.append(
+                sql.SQL("output := {val}").format(val=sql.Literal(model.output))
+            )
         if model.schedule_ticks is not None:
-            args.append(f"schedule_ticks := {model.schedule_ticks}")
+            args.append(
+                sql.SQL("schedule_ticks := {val}").format(
+                    val=sql.Literal(model.schedule_ticks)
+                )
+            )
         if model.options:
-            args.append(f"options := {repr(json.dumps(model.options))}")
-        sql = "SELECT ml_register_compute(" + ", ".join(args) + ")"
-        return sql
+            args.append(
+                sql.SQL("options := {val}").format(
+                    val=sql.Literal(json.dumps(model.options))
+                )
+            )
+        query = sql.SQL("SELECT ml_register_compute({args})").format(
+            args=sql.SQL(", ").join(args)
+        )
+        return query.as_string(None)
 
     raise TypeError("Unsupported model type")
