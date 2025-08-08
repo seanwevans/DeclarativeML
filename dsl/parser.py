@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from lark import Lark, Transformer, v_args
 
@@ -299,10 +299,10 @@ class TreeToModel(Transformer):
         )
 
 
-def parse(text: str) -> Any:
+def parse(text: str) -> TrainModel | ComputeKernel:
     tree = _PARSER.parse(text)
     model = TreeToModel().transform(tree)
-    return model
+    return cast(TrainModel | ComputeKernel, model)
 
 
 def compile_sql(model: Any) -> str:
