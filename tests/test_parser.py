@@ -113,6 +113,11 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
 
+    def test_compute_missing_kernel(self):
+        text = "COMPUTE add_vectors FROM table(foo) INTO column(bar)"
+        with self.assertRaises(LarkError):
+            parser.parse(text)
+
 
 @given(
     model_name=st.text(
