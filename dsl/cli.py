@@ -3,7 +3,7 @@ import sys
 
 from lark.exceptions import LarkError
 
-from .parser import compile_sql, parse
+from .parser import ComputeKernel, TrainModel, compile_sql, parse
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
         text = sys.stdin.read()
 
     try:
-        model = parse(text)
+        model: TrainModel | ComputeKernel = parse(text)
         sql = compile_sql(model)
     except LarkError as exc:
         print(f"Failed to parse DSL: {exc}", file=sys.stderr)
