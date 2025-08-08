@@ -114,6 +114,35 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
 
+    def test_compile_sql_escapes_identifiers(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="weird;table",
+            target="tar;get",
+            features=["fe;ature"],
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('"weird;table"', sql_str)
+        self.assertIn('"fe;ature"', sql_str)
+        self.assertIn('"tar;get"', sql_str)
+
+    def test_compile_sql_escapes_compute_identifiers(self):
+        stmt = parser.ComputeKernel(
+            name="name;drop",
+            inputs=["in;put"],
+            output="out;put",
+            schedule_ticks=None,
+            kernel="ker;nel",
+            options=None,
+        )
+        sql_str = parser.compile_sql(stmt)
+        self.assertIn("'name;drop'", sql_str)
+        self.assertIn("'ker;nel'", sql_str)
+        self.assertIn("'in;put'", sql_str)
+        self.assertIn("'out;put'", sql_str)
+
 
 @given(
     model_name=st.text(
