@@ -114,6 +114,17 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
 
+    def test_parse_compute_invalid_clause(self):
+        text = "COMPUTE bad_job USING some_kernel EXTRA"
+        with self.assertRaises(LarkError):
+            parser.parse(text)
+
+    def test_compute_stmt_unexpected_part(self):
+        transformer = parser.TreeToModel()
+        with self.assertRaises(ValueError) as ctx:
+            transformer.compute_stmt("bad_job", "kernel", 123)
+        self.assertIn("Unexpected compute clause part", str(ctx.exception))
+
     def test_data_split_sum_validation_passes(self):
         text = (
             "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a, b) "

@@ -108,8 +108,15 @@ COMPUTE scan_peptides
   USING immune_scan SHARED 1K;
 ```
 
-The `USING` clause must always specify the kernel name; it is a required
-parameter for registering a compute kernel.
+Supported compute clauses include:
+
+- `FROM table(col1, col2, ...)` to specify input columns
+- `INTO column(name)` to designate an output column
+- `EVERY <ticks> TICKS` to schedule periodic execution
+- `USING <kernel>` to select the GPU kernel
+- `BLOCK <number>` to set thread block size
+- `GRID <name>` to choose a grid strategy
+- `SHARED <size>` to allocate shared memory (e.g., `1K`)
 
 ### Event-Driven Workflows
 
