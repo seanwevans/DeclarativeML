@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isclose
 from typing import Any, Dict, List, Optional, cast
 
 from lark import Lark, Transformer, v_args
+from lark.exceptions import VisitError
 from psycopg import sql
+
 
 dsl_grammar = r"""
 ?start: train_stmt
@@ -74,6 +77,11 @@ _PARSER = Lark(dsl_grammar, start="start", parser="lalr")
 @dataclass
 class DataSplit:
     ratios: Dict[str, float]
+
+    def __post_init__(self) -> None:
+        total = sum(self.ratios.values())
+        if not isclose(total, 1.0, abs_tol=1e-6):
+            raise ValueError("data split ratios must sum to 1.0")
 
 
 @dataclass
@@ -302,9 +310,13 @@ class TreeToModel(Transformer):
 
 def parse(text: str) -> TrainModel | ComputeKernel:
     tree = _PARSER.parse(text)
-    model = TreeToModel().transform(tree)
-    return cast(TrainModel | ComputeKernel, model)
-
+    try:
+        model = TreeToModel().transform(tree)
+    except VisitError as e:
+        if isinstance(e.orig_exc, ValueError):
+            raise e.orig_exc
+        raise
+    return model
 
 def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json

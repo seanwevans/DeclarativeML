@@ -114,6 +114,23 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
 
+    def test_data_split_sum_validation_passes(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a, b) "
+            "SPLIT DATA train=0.8, test=0.2"
+        )
+        model = parser.parse(text)
+        self.assertIsNotNone(model.split)
+        self.assertAlmostEqual(sum(model.split.ratios.values()), 1.0)
+
+    def test_data_split_sum_validation_fails(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a, b) "
+            "SPLIT DATA train=0.6, test=0.3"
+        )
+        with self.assertRaises(ValueError):
+            parser.parse(text)
+
 
     def test_compute_missing_kernel(self):
         text = "COMPUTE add_vectors FROM table(foo) INTO column(bar)"
