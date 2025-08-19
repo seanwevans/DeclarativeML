@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isclose
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from lark import Lark, Transformer, v_args
 from lark.exceptions import VisitError
 from psycopg import sql
-
 
 dsl_grammar = r"""
 ?start: train_stmt
@@ -79,6 +78,10 @@ class DataSplit:
     ratios: Dict[str, float]
 
     def __post_init__(self) -> None:
+        for value in self.ratios.values():
+            if not 0 <= value <= 1:
+                raise ValueError("split ratios must be between 0 and 1")
+
         total = sum(self.ratios.values())
         if not isclose(total, 1.0, abs_tol=1e-6):
             raise ValueError("data split ratios must sum to 1.0")
@@ -316,6 +319,7 @@ def parse(text: str) -> TrainModel | ComputeKernel:
             raise e.orig_exc
         raise
     return model
+
 
 def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
