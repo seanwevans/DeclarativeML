@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isclose
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from lark import Lark, Transformer, v_args
 from lark.exceptions import VisitError
 from psycopg import sql
-
 
 dsl_grammar = r"""
 ?start: train_stmt
@@ -316,6 +315,7 @@ def parse(text: str) -> TrainModel | ComputeKernel:
             raise e.orig_exc
         raise
     return model
+
 
 def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
