@@ -62,6 +62,11 @@ class TestParser(unittest.TestCase):
         with self.assertRaises(LarkError):
             parser.parse(text)
 
+    def test_empty_feature_list(self):
+        text = "TRAIN MODEL m USING a FROM t PREDICT y WITH FEATURES()"
+        with self.assertRaises(LarkError):
+            parser.parse(text)
+
     def test_algorithm_param_types(self):
         text = (
             'TRAIN MODEL m USING alg(num=1, rate=0.5, name="x") FROM t '

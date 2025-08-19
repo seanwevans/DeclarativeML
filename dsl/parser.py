@@ -38,7 +38,7 @@ param_list: param ("," param)*
 param: NAME "=" value
 value: SIGNED_NUMBER | ESCAPED_STRING | NAME
 
-features: "WITH" "FEATURES" "(" feature_list? ")"
+features: "WITH" "FEATURES" "(" feature_list ")"
 feature_list: NAME ("," NAME)*
 
 option: validate_stmt
@@ -159,7 +159,7 @@ class TreeToModel(Transformer):
         return list(items)
 
     def features(self, items):
-        return items[0] if items else []
+        return items[0]
 
     def option(self, items):
         return items[0]
