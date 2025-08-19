@@ -78,6 +78,10 @@ class DataSplit:
     ratios: Dict[str, float]
 
     def __post_init__(self) -> None:
+        for value in self.ratios.values():
+            if not 0 <= value <= 1:
+                raise ValueError("split ratios must be between 0 and 1")
+
         total = sum(self.ratios.values())
         if not isclose(total, 1.0, abs_tol=1e-6):
             raise ValueError("data split ratios must sum to 1.0")
