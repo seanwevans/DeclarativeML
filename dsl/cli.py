@@ -34,8 +34,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         model: TrainModel | ComputeKernel = parse(text)
         sql = compile_sql(model)
-    except LarkError as exc:
-        print(f"Failed to parse DSL: {exc}", file=sys.stderr)
+    except (LarkError, ValueError) as exc:
+        print(f"Failed to compile DSL: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # pragma: no cover - safety net
+        print(f"Unexpected error: {exc}", file=sys.stderr)
         return 1
 
     # Print the generated SQL with a trailing newline to ensure a clean output
