@@ -9,9 +9,11 @@ DOC_FILES = [
     "DISTRIBUTED.md",
 ]
 
-# Ensure all documentation files exist
-for f in DOC_FILES:
-    assert os.path.exists(f), f"Documentation file missing: {f}"
+
+def test_doc_files_exist():
+    """Ensure all required documentation files are present."""
+    missing = [f for f in DOC_FILES if not os.path.exists(f)]
+    assert not missing, f"Missing documentation file(s): {', '.join(missing)}"
 
 
 def test_markdown_headings():
