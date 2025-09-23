@@ -1,4 +1,6 @@
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -85,6 +87,34 @@ class TestCLI(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Failed to read source file", result.stderr.decode())
+
+    def test_cli_outputs_nested_params(self):
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        dsl_text = (
+            "TRAIN MODEL nested USING algo("
+            "layers=[32, 16], config={mode: fast, thresholds: [0.1, 0.2]}"
+            ") FROM data PREDICT label WITH FEATURES(x)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "dsl.cli"],
+            input=dsl_text.encode(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=repo_root,
+            check=True,
+        )
+        output = result.stdout.decode()
+        self.assertIn("ml_train_model", output)
+        match = re.search(r"algorithm_params := '([^']*)'", output)
+        self.assertIsNotNone(match)
+        params = json.loads(match.group(1))
+        self.assertEqual(
+            params,
+            {
+                "layers": [32, 16],
+                "config": {"mode": "fast", "thresholds": [0.1, 0.2]},
+            },
+        )
 
 
 if __name__ == "__main__":
