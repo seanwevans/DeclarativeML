@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from math import isclose
 from typing import Any, Dict, List, Optional
 
@@ -12,8 +13,10 @@ dsl_grammar = r"""
 ?start: train_stmt
        | compute_stmt
 
-train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME \
+train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" sql_clause \
             "PREDICT" NAME features option*
+
+sql_clause: SQL_CLAUSE
 
 compute_stmt: "COMPUTE" NAME compute_from? compute_into? compute_every? \
               "USING" NAME kernel_opt*
@@ -67,10 +70,21 @@ COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 %import common.ESCAPED_STRING
 %import common.WS
 %ignore WS
+
+SQL_CLAUSE: /(.|\n)+?(?=PREDICT\b)/
 """
 
 # instantiate the parser once at module import time
 _PARSER = Lark(dsl_grammar, start="start", parser="lalr")
+
+
+_SIMPLE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _as_sql_fragment(text: str) -> sql.SQL:
+    """Return a psycopg SQL fragment with braces escaped for formatting."""
+
+    return sql.SQL(text.replace("{", "{{").replace("}", "}}"))
 
 
 @dataclass
@@ -112,6 +126,7 @@ class TrainModel:
     source: str
     target: str
     features: List[str]
+    source_is_identifier: bool = True
     split: Optional[DataSplit] = None
     validate: Optional[ValidationOption] = None
     optimize_metric: Optional[str] = None
@@ -169,6 +184,11 @@ class TreeToModel(Transformer):
 
     def name_list(self, items):
         return list(items)
+
+    def sql_clause(self, items):
+        token = items[0]
+        text = token.value if hasattr(token, "value") else str(token)
+        return text.strip()
 
     def compute_from(self, items):
         return ("inputs", items[0])
@@ -251,13 +271,18 @@ class TreeToModel(Transformer):
         *options,
     ):
         alg_name, params = algorithm
+        source_clause = source.strip() if isinstance(source, str) else str(source).strip()
+        if not source_clause:
+            raise ValueError("Training data source clause cannot be empty")
+        source_is_identifier = bool(_SIMPLE_IDENTIFIER_RE.fullmatch(source_clause))
         model = TrainModel(
             name=model_name,
             algorithm=alg_name,
             params=params,
-            source=source,
+            source=source_clause,
             target=target,
             features=features,
+            source_is_identifier=source_is_identifier,
         )
         for opt in options:
             if isinstance(opt, DataSplit):
@@ -328,11 +353,15 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         # build training query with properly quoted identifiers
         field_idents = [sql.Identifier(f) for f in model.features]
         field_idents.append(sql.Identifier(model.target))
+        if model.source_is_identifier:
+            source_fragment = sql.Identifier(model.source)
+        else:
+            source_fragment = _as_sql_fragment(model.source)
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
             .format(
                 fields=sql.SQL(", ").join(field_idents),
-                source=sql.Identifier(model.source),
+                source=source_fragment,
             )
             .as_string(None)
         )
