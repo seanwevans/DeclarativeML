@@ -45,6 +45,9 @@ option: validate_stmt
       | stop_stmt
       | split_stmt
       | balance_stmt
+      | checkpoint_stmt
+
+checkpoint_stmt: "SAVE" "CHECKPOINTS" "EVERY" SIGNED_NUMBER NAME?
 
 balance_stmt: "BALANCE" "CLASSES" "BY" NAME
 
@@ -105,6 +108,12 @@ class BalanceOption:
 
 
 @dataclass
+class CheckpointOption:
+    interval: float | int
+    unit: Optional[str] = None
+
+
+@dataclass
 class TrainModel:
     name: str
     algorithm: str
@@ -117,6 +126,7 @@ class TrainModel:
     optimize_metric: Optional[str] = None
     stop_condition: Optional[str] = None
     balance_method: Optional[str] = None
+    checkpoint: Optional[CheckpointOption] = None
 
 
 @dataclass
@@ -210,6 +220,11 @@ class TreeToModel(Transformer):
     def balance_stmt(self, items):
         return BalanceOption(method=items[0])
 
+    def checkpoint_stmt(self, items):
+        interval = items[0]
+        unit = items[1] if len(items) > 1 else None
+        return CheckpointOption(interval=interval, unit=unit)
+
     def validate_stmt(self, items):
         if len(items) == 1:
             return ValidationOption(on=items[0])
@@ -268,6 +283,8 @@ class TreeToModel(Transformer):
                 model.optimize_metric = opt.metric
             elif isinstance(opt, BalanceOption):
                 model.balance_method = opt.method
+            elif isinstance(opt, CheckpointOption):
+                model.checkpoint = opt
             elif isinstance(opt, str):
                 model.stop_condition = opt
         return model
@@ -392,6 +409,15 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
                     val=sql.Literal(model.balance_method)
                 )
             )
+        if model.checkpoint:
+            checkpoint_payload = {"interval": model.checkpoint.interval}
+            if model.checkpoint.unit:
+                checkpoint_payload["unit"] = model.checkpoint.unit
+            args.append(
+                sql.SQL("checkpoint_schedule := {val}").format(
+                    val=sql.Literal(json.dumps(checkpoint_payload))
+                )
+            )
 
         query = sql.SQL("SELECT ml_train_model({args})").format(
             args=sql.SQL(", ").join(args)
@@ -431,3 +457,4 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         return query.as_string(None)
 
     raise TypeError("Unsupported model type")
+

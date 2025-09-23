@@ -98,6 +98,17 @@ class TestParser(unittest.TestCase):
         model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.balance_method, "oversampling")
 
+    def test_checkpoint_clause(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a) "
+            "SAVE CHECKPOINTS EVERY 10 epochs"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertIsNotNone(model.checkpoint)
+        assert model.checkpoint is not None
+        self.assertEqual(model.checkpoint.interval, 10)
+        self.assertEqual(model.checkpoint.unit, "epochs")
+
     def test_parse_compute(self):
         text = (
             "COMPUTE add_vectors FROM table(foo, bar) INTO column(baz) "
@@ -166,6 +177,21 @@ class TestParser(unittest.TestCase):
         self.assertIn('"weird;table"', sql_str)
         self.assertIn('"fe;ature"', sql_str)
         self.assertIn('"tar;get"', sql_str)
+
+    def test_compile_sql_includes_checkpoint(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="data",
+            target="target",
+            features=["feature"],
+            checkpoint=parser.CheckpointOption(interval=5, unit="epochs"),
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn("checkpoint_schedule :=", sql_str)
+        self.assertIn('"interval": 5', sql_str)
+        self.assertIn('"unit": "epochs"', sql_str)
 
     def test_compile_sql_escapes_compute_identifiers(self):
         stmt = parser.ComputeKernel(
