@@ -83,6 +83,40 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.optimize_metric, "accuracy")
         self.assertEqual(model.stop_condition, "accuracy > 0.9")
 
+    def test_feature_list_with_expressions(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM data PREDICT y WITH FEATURES("
+            "amount, DERIVED(amount * exchange_rate), "
+            "TRANSFORM(scale(log(amount + 1))))"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.features,
+            [
+                "amount",
+                "DERIVED(amount * exchange_rate)",
+                "TRANSFORM(scale(log(amount + 1)))",
+            ],
+        )
+
+    def test_compile_sql_with_feature_expressions(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=[
+                "amount",
+                "DERIVED(amount * exchange_rate)",
+                "TRANSFORM(scale(log(amount + 1)))",
+            ],
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('"amount"', sql_str)
+        self.assertIn("DERIVED(amount * exchange_rate)", sql_str)
+        self.assertIn("TRANSFORM(scale(log(amount + 1)))", sql_str)
+
     def test_invalid_syntax_raises(self):
         with self.assertRaises(LarkError):
             parser.parse("TRAIN MODEL bad USING algo FROM tbl")

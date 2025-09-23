@@ -41,7 +41,35 @@ param: NAME "=" value
 value: SIGNED_NUMBER | ESCAPED_STRING | NAME
 
 features: "WITH" "FEATURES" "(" feature_list ")"
-feature_list: NAME ("," NAME)*
+feature_list: feature_expr ("," feature_expr)*
+
+?feature_expr: feature_sum
+
+?feature_sum: feature_sum "+" feature_term   -> feature_add
+           | feature_sum "-" feature_term   -> feature_sub
+           | feature_term
+
+?feature_term: feature_term "*" feature_factor -> feature_mul
+             | feature_term "/" feature_factor -> feature_div
+             | feature_factor
+
+?feature_factor: "-" feature_factor         -> feature_neg
+               | feature_primary
+
+?feature_primary: feature_call
+                | feature_identifier
+                | feature_number
+                | feature_string
+                | "(" feature_expr ")"    -> feature_group
+
+feature_call: feature_identifier "(" feature_call_args? ")"
+feature_call_args: feature_call_arg ("," feature_call_arg)*
+feature_call_arg: NAME "=" feature_expr     -> feature_kwarg
+                | feature_expr
+
+feature_identifier: NAME ("." NAME)*
+feature_number: SIGNED_NUMBER
+feature_string: ESCAPED_STRING
 
 option: validate_stmt
       | optimize_stmt
@@ -178,6 +206,69 @@ class TreeToModel(Transformer):
 
     def features(self, items):
         return items[0]
+
+    def feature_expr(self, items):
+        return items[0] if items else ""
+
+    def feature_term(self, items):
+        return items[0] if items else ""
+
+    def feature_factor(self, items):
+        return items[0] if items else ""
+
+    def feature_primary(self, items):
+        return items[0] if items else ""
+
+    def feature_identifier(self, items):
+        return ".".join(items)
+
+    def feature_call_args(self, items):
+        return items
+
+    def feature_call_arg(self, items):
+        return items[0] if items else ""
+
+    def feature_call(self, items):
+        name = items[0]
+        args = items[1] if len(items) > 1 else []
+        if args:
+            return f"{name}({', '.join(args)})"
+        return f"{name}()"
+
+    def feature_group(self, items):
+        return f"({items[0]})"
+
+    def feature_add(self, items):
+        left, right = items
+        return f"{left} + {right}"
+
+    def feature_sub(self, items):
+        left, right = items
+        return f"{left} - {right}"
+
+    def feature_mul(self, items):
+        left, right = items
+        return f"{left} * {right}"
+
+    def feature_div(self, items):
+        left, right = items
+        return f"{left} / {right}"
+
+    def feature_neg(self, items):
+        (value,) = items
+        return f"-{value}"
+
+    def feature_number(self, items):
+        (value,) = items
+        return str(value)
+
+    def feature_string(self, items):
+        (value,) = items
+        return f'"{value}"'
+
+    def feature_kwarg(self, items):
+        name, value = items
+        return f"{name}={value}"
 
     def option(self, items):
         return items[0]
@@ -351,17 +442,19 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
 
     if isinstance(model, TrainModel):
         # build training query with properly quoted identifiers
-        field_idents = [sql.Identifier(f) for f in model.features]
-        field_idents.append(sql.Identifier(model.target))
-        if model.source_is_identifier:
-            source_fragment = sql.Identifier(model.source)
-        else:
-            source_fragment = _as_sql_fragment(model.source)
+        select_fields: List[sql.Composable] = []
+        for feature in model.features:
+            if not any(ch in feature for ch in " ()+-*/="):
+                select_fields.append(sql.Identifier(feature))
+            else:
+                select_fields.append(sql.SQL(feature))
+
+        select_fields.append(sql.Identifier(model.target))
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
             .format(
-                fields=sql.SQL(", ").join(field_idents),
-                source=source_fragment,
+                fields=sql.SQL(", ").join(select_fields),
+                source=sql.Identifier(model.source),
             )
             .as_string(None)
         )
