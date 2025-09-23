@@ -38,7 +38,15 @@ size_spec: SIGNED_NUMBER NAME?
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
 param: NAME "=" value
-value: SIGNED_NUMBER | ESCAPED_STRING | NAME
+value: SIGNED_NUMBER
+     | ESCAPED_STRING
+     | NAME
+     | list_literal
+     | dict_literal
+
+list_literal: "[" [value ("," value)*] "]"
+dict_literal: "{" [dict_entry ("," dict_entry)*] "}"
+dict_entry: (NAME | ESCAPED_STRING) ":" value
 
 features: "WITH" "FEATURES" "(" feature_list ")"
 feature_list: feature_expr ("," feature_expr)*
@@ -185,6 +193,16 @@ class TreeToModel(Transformer):
 
     def value(self, items):
         return items[0]
+
+    def list_literal(self, items):
+        return list(items)
+
+    def dict_entry(self, items):
+        key, value = items
+        return key, value
+
+    def dict_literal(self, items):
+        return dict(items)
 
     def param(self, items):
         name, value = items

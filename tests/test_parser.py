@@ -1,3 +1,5 @@
+import json
+import re
 import unittest
 from typing import cast
 
@@ -153,6 +155,39 @@ class TestParser(unittest.TestCase):
         )
         model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.params, [("alpha", -0.1), ("depth", -5)])
+
+    def test_algorithm_param_list_and_dict_literals(self):
+        text = (
+            "TRAIN MODEL m USING alg("
+            "layers=[64, 128, 256], "
+            "config={mode: fast, thresholds: [0.1, 0.2]}"
+            ") FROM t PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.params,
+            [
+                ("layers", [64, 128, 256]),
+                (
+                    "config",
+                    {
+                        "mode": "fast",
+                        "thresholds": [0.1, 0.2],
+                    },
+                ),
+            ],
+        )
+        sql = parser.compile_sql(model)
+        match = re.search(r"algorithm_params := '([^']*)'", sql)
+        self.assertIsNotNone(match)
+        params_json = match.group(1)
+        self.assertEqual(
+            json.loads(params_json),
+            {
+                "layers": [64, 128, 256],
+                "config": {"mode": "fast", "thresholds": [0.1, 0.2]},
+            },
+        )
 
     def test_balance_clause(self):
         text = (
