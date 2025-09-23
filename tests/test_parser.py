@@ -1,3 +1,5 @@
+import json
+import re
 import unittest
 from typing import cast
 
@@ -21,6 +23,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.source, "transactions")
         self.assertEqual(model.target, "is_fraud")
         self.assertEqual(model.features, ["amount", "merchant_type"])
+        self.assertTrue(model.source_is_identifier)
         sql = parser.compile_sql(model)
         self.assertIn("ml_train_model", sql)
 
@@ -36,6 +39,35 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.source, "training_data")
         self.assertEqual(model.target, "outcome")
         self.assertEqual(model.features, ["a", "b"])
+        self.assertTrue(model.source_is_identifier)
+
+    def test_parse_train_model_join_source(self):
+        text = (
+            "TRAIN MODEL joined USING alg FROM transactions JOIN merchants ON "
+            "transactions.merchant_id = merchants.id PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.source,
+            "transactions JOIN merchants ON transactions.merchant_id = merchants.id",
+        )
+        self.assertFalse(model.source_is_identifier)
+        sql_str = parser.compile_sql(model)
+        self.assertIn("JOIN merchants", sql_str)
+
+    def test_parse_train_model_filtered_source(self):
+        text = (
+            "TRAIN MODEL filtered USING alg FROM (SELECT * FROM base WHERE active = TRUE) sub "
+            "PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.source,
+            "(SELECT * FROM base WHERE active = TRUE) sub",
+        )
+        self.assertFalse(model.source_is_identifier)
+        sql_str = parser.compile_sql(model)
+        self.assertIn("FROM (SELECT * FROM base WHERE active = TRUE) sub", sql_str)
 
     def test_parse_train_model_with_options(self):
         text = (
@@ -52,6 +84,40 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.validate.method, "cv")
         self.assertEqual(model.optimize_metric, "accuracy")
         self.assertEqual(model.stop_condition, "accuracy > 0.9")
+
+    def test_feature_list_with_expressions(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM data PREDICT y WITH FEATURES("
+            "amount, DERIVED(amount * exchange_rate), "
+            "TRANSFORM(scale(log(amount + 1))))"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.features,
+            [
+                "amount",
+                "DERIVED(amount * exchange_rate)",
+                "TRANSFORM(scale(log(amount + 1)))",
+            ],
+        )
+
+    def test_compile_sql_with_feature_expressions(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=[
+                "amount",
+                "DERIVED(amount * exchange_rate)",
+                "TRANSFORM(scale(log(amount + 1)))",
+            ],
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('"amount"', sql_str)
+        self.assertIn("DERIVED(amount * exchange_rate)", sql_str)
+        self.assertIn("TRANSFORM(scale(log(amount + 1)))", sql_str)
 
     def test_invalid_syntax_raises(self):
         with self.assertRaises(LarkError):
@@ -89,6 +155,39 @@ class TestParser(unittest.TestCase):
         )
         model = cast(parser.TrainModel, parser.parse(text))
         self.assertEqual(model.params, [("alpha", -0.1), ("depth", -5)])
+
+    def test_algorithm_param_list_and_dict_literals(self):
+        text = (
+            "TRAIN MODEL m USING alg("
+            "layers=[64, 128, 256], "
+            "config={mode: fast, thresholds: [0.1, 0.2]}"
+            ") FROM t PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.params,
+            [
+                ("layers", [64, 128, 256]),
+                (
+                    "config",
+                    {
+                        "mode": "fast",
+                        "thresholds": [0.1, 0.2],
+                    },
+                ),
+            ],
+        )
+        sql = parser.compile_sql(model)
+        match = re.search(r"algorithm_params := '([^']*)'", sql)
+        self.assertIsNotNone(match)
+        params_json = match.group(1)
+        self.assertEqual(
+            json.loads(params_json),
+            {
+                "layers": [64, 128, 256],
+                "config": {"mode": "fast", "thresholds": [0.1, 0.2]},
+            },
+        )
 
     def test_balance_clause(self):
         text = (

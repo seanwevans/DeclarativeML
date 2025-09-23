@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from math import isclose
 from typing import Any, Dict, List, Optional
 
@@ -12,8 +13,10 @@ dsl_grammar = r"""
 ?start: train_stmt
        | compute_stmt
 
-train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" NAME \
+train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" sql_clause \
             "PREDICT" NAME features option*
+
+sql_clause: SQL_CLAUSE
 
 compute_stmt: "COMPUTE" NAME compute_from? compute_into? compute_every? \
               "USING" NAME kernel_opt*
@@ -35,10 +38,46 @@ size_spec: SIGNED_NUMBER NAME?
 algorithm: NAME ("(" param_list? ")")?
 param_list: param ("," param)*
 param: NAME "=" value
-value: SIGNED_NUMBER | ESCAPED_STRING | NAME
+value: SIGNED_NUMBER
+     | ESCAPED_STRING
+     | NAME
+     | list_literal
+     | dict_literal
+
+list_literal: "[" [value ("," value)*] "]"
+dict_literal: "{" [dict_entry ("," dict_entry)*] "}"
+dict_entry: (NAME | ESCAPED_STRING) ":" value
 
 features: "WITH" "FEATURES" "(" feature_list ")"
-feature_list: NAME ("," NAME)*
+feature_list: feature_expr ("," feature_expr)*
+
+?feature_expr: feature_sum
+
+?feature_sum: feature_sum "+" feature_term   -> feature_add
+           | feature_sum "-" feature_term   -> feature_sub
+           | feature_term
+
+?feature_term: feature_term "*" feature_factor -> feature_mul
+             | feature_term "/" feature_factor -> feature_div
+             | feature_factor
+
+?feature_factor: "-" feature_factor         -> feature_neg
+               | feature_primary
+
+?feature_primary: feature_call
+                | feature_identifier
+                | feature_number
+                | feature_string
+                | "(" feature_expr ")"    -> feature_group
+
+feature_call: feature_identifier "(" feature_call_args? ")"
+feature_call_args: feature_call_arg ("," feature_call_arg)*
+feature_call_arg: NAME "=" feature_expr     -> feature_kwarg
+                | feature_expr
+
+feature_identifier: NAME ("." NAME)*
+feature_number: SIGNED_NUMBER
+feature_string: ESCAPED_STRING
 
 option: validate_stmt
       | optimize_stmt
@@ -70,10 +109,21 @@ COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 %import common.ESCAPED_STRING
 %import common.WS
 %ignore WS
+
+SQL_CLAUSE: /(.|\n)+?(?=PREDICT\b)/
 """
 
 # instantiate the parser once at module import time
 _PARSER = Lark(dsl_grammar, start="start", parser="lalr")
+
+
+_SIMPLE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _as_sql_fragment(text: str) -> sql.SQL:
+    """Return a psycopg SQL fragment with braces escaped for formatting."""
+
+    return sql.SQL(text.replace("{", "{{").replace("}", "}}"))
 
 
 @dataclass
@@ -121,6 +171,7 @@ class TrainModel:
     source: str
     target: str
     features: List[str]
+    source_is_identifier: bool = True
     split: Optional[DataSplit] = None
     validate: Optional[ValidationOption] = None
     optimize_metric: Optional[str] = None
@@ -153,6 +204,16 @@ class TreeToModel(Transformer):
     def value(self, items):
         return items[0]
 
+    def list_literal(self, items):
+        return list(items)
+
+    def dict_entry(self, items):
+        key, value = items
+        return key, value
+
+    def dict_literal(self, items):
+        return dict(items)
+
     def param(self, items):
         name, value = items
         return name, value
@@ -174,11 +235,79 @@ class TreeToModel(Transformer):
     def features(self, items):
         return items[0]
 
+    def feature_expr(self, items):
+        return items[0] if items else ""
+
+    def feature_term(self, items):
+        return items[0] if items else ""
+
+    def feature_factor(self, items):
+        return items[0] if items else ""
+
+    def feature_primary(self, items):
+        return items[0] if items else ""
+
+    def feature_identifier(self, items):
+        return ".".join(items)
+
+    def feature_call_args(self, items):
+        return items
+
+    def feature_call_arg(self, items):
+        return items[0] if items else ""
+
+    def feature_call(self, items):
+        name = items[0]
+        args = items[1] if len(items) > 1 else []
+        if args:
+            return f"{name}({', '.join(args)})"
+        return f"{name}()"
+
+    def feature_group(self, items):
+        return f"({items[0]})"
+
+    def feature_add(self, items):
+        left, right = items
+        return f"{left} + {right}"
+
+    def feature_sub(self, items):
+        left, right = items
+        return f"{left} - {right}"
+
+    def feature_mul(self, items):
+        left, right = items
+        return f"{left} * {right}"
+
+    def feature_div(self, items):
+        left, right = items
+        return f"{left} / {right}"
+
+    def feature_neg(self, items):
+        (value,) = items
+        return f"-{value}"
+
+    def feature_number(self, items):
+        (value,) = items
+        return str(value)
+
+    def feature_string(self, items):
+        (value,) = items
+        return f'"{value}"'
+
+    def feature_kwarg(self, items):
+        name, value = items
+        return f"{name}={value}"
+
     def option(self, items):
         return items[0]
 
     def name_list(self, items):
         return list(items)
+
+    def sql_clause(self, items):
+        token = items[0]
+        text = token.value if hasattr(token, "value") else str(token)
+        return text.strip()
 
     def compute_from(self, items):
         return ("inputs", items[0])
@@ -266,13 +395,18 @@ class TreeToModel(Transformer):
         *options,
     ):
         alg_name, params = algorithm
+        source_clause = source.strip() if isinstance(source, str) else str(source).strip()
+        if not source_clause:
+            raise ValueError("Training data source clause cannot be empty")
+        source_is_identifier = bool(_SIMPLE_IDENTIFIER_RE.fullmatch(source_clause))
         model = TrainModel(
             name=model_name,
             algorithm=alg_name,
             params=params,
-            source=source,
+            source=source_clause,
             target=target,
             features=features,
+            source_is_identifier=source_is_identifier,
         )
         for opt in options:
             if isinstance(opt, DataSplit):
@@ -343,12 +477,18 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
 
     if isinstance(model, TrainModel):
         # build training query with properly quoted identifiers
-        field_idents = [sql.Identifier(f) for f in model.features]
-        field_idents.append(sql.Identifier(model.target))
+        select_fields: List[sql.Composable] = []
+        for feature in model.features:
+            if not any(ch in feature for ch in " ()+-*/="):
+                select_fields.append(sql.Identifier(feature))
+            else:
+                select_fields.append(sql.SQL(feature))
+
+        select_fields.append(sql.Identifier(model.target))
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
             .format(
-                fields=sql.SQL(", ").join(field_idents),
+                fields=sql.SQL(", ").join(select_fields),
                 source=sql.Identifier(model.source),
             )
             .as_string(None)
