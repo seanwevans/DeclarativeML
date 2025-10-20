@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DeclarativeML — Database That Learns</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" integrity="sha512-o0jZBwbNG0Ax7Anxr1j7rwhhtjfiPgkBC5T9jp+1rssZCvGSqtEtFPi0PfrxGX2YeliYg+6TSGT+b/xGaxzwoQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    :root {
+      color-scheme: dark light;
+      --bg: #0f172a;
+      --fg: #e2e8f0;
+      --accent: #38bdf8;
+      --accent-strong: #0ea5e9;
+      --muted: #94a3b8;
+    }
+
+    body {
+      font-family: "Inter", "Segoe UI", sans-serif;
+      margin: 0;
+      background: linear-gradient(160deg, #020617, #0f172a 35%, #1e293b 80%);
+      color: var(--fg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      text-align: center;
+      padding: 3rem 2rem 2rem;
+    }
+
+    header h1 {
+      margin-bottom: 0.5rem;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin: 0 auto;
+      max-width: 760px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    main {
+      width: min(1100px, 92vw);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 2.5rem;
+      padding-bottom: 3rem;
+    }
+
+    section {
+      background: rgba(15, 23, 42, 0.82);
+      box-shadow: 0 20px 45px rgba(2, 6, 23, 0.6);
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      padding: 1.5rem 1.75rem 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    section h2 {
+      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    button {
+      background: var(--accent-strong);
+      border: none;
+      color: white;
+      padding: 0.55rem 1.1rem;
+      border-radius: 999px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 12px 24px rgba(14, 165, 233, 0.25);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 30px rgba(56, 189, 248, 0.35);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .legend {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .legend span::before {
+      content: "";
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      display: inline-block;
+      background: currentColor;
+    }
+
+    .hyper-tuning {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .hyper-details {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    footer {
+      color: var(--muted);
+      padding: 0 0 2.5rem;
+      font-size: 0.85rem;
+    }
+
+    svg text {
+      font-weight: 500;
+      fill: var(--fg);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DeclarativeML — The Database That Learns</h1>
+    <p>
+      DeclarativeML orchestrates machine learning directly inside the database. Its two-tier control plane combines PostgreSQL for
+      synchronous state transitions with CockroachDB for distributed coordination, while autonomous agents and worker pools manage
+      long-running model pipelines.
+    </p>
+  </header>
+  <main>
+    <section id="architecture">
+      <h2>Architecture &amp; Coordination Topology</h2>
+      <div class="controls">
+        <button id="run-flow">Animate TRAIN MODEL Flow</button>
+        <button id="reset-flow" disabled>Reset Flow</button>
+      </div>
+      <svg id="architecture-svg" viewBox="0 0 960 520"></svg>
+      <div class="legend">
+        <span style="color:#38bdf8">Synchronous operations (PostgreSQL)</span>
+        <span style="color:#f97316">Coordination events (CockroachDB)</span>
+        <span style="color:#22c55e">Worker pools &amp; agents</span>
+      </div>
+    </section>
+    <section id="training">
+      <h2>Training Progress Timeline</h2>
+      <div class="controls">
+        <button id="play-training">Play</button>
+        <button id="pause-training" disabled>Pause</button>
+        <button id="reset-training">Reset</button>
+      </div>
+      <svg id="training-chart" viewBox="0 0 480 320"></svg>
+    </section>
+    <section id="hyper">
+      <h2>Hyper-Parameter Search</h2>
+      <div class="controls">
+        <button id="play-hyper">Simulate Trials</button>
+        <button id="reset-hyper" disabled>Reset Trials</button>
+      </div>
+      <svg id="hyper-chart" viewBox="0 0 480 320"></svg>
+      <div class="hyper-details">
+        <span id="trial-count">Trials: 0</span>
+        <span id="best-trial">Best Trial: —</span>
+      </div>
+    </section>
+  </main>
+  <footer>Interact with the cards to see how DeclarativeML orchestrates declarative machine learning.</footer>
+  <script>
+    // --- Architecture Diagram ---
+    const archSvg = d3.select("#architecture-svg");
+    const nodeData = [
+      { id: "client", label: "Client / Analyst", x: 90, y: 90 },
+      { id: "parser", label: "Declarative DSL Parser", x: 290, y: 90 },
+      { id: "planner", label: "Orchestration Planner", x: 520, y: 90 },
+      { id: "postgres", label: "PostgreSQL Layer\n(synchronous state)", x: 520, y: 220 },
+      { id: "cockroach", label: "CockroachDB Layer\n(coordination & leases)", x: 730, y: 220 },
+      { id: "eventBus", label: "Event Bus", x: 290, y: 220 },
+      { id: "workers", label: "Event-driven Worker Pools", x: 290, y: 370 },
+      { id: "agents", label: "Autonomous Agents", x: 520, y: 370 },
+      { id: "artifact", label: "Model Registry & Artifacts", x: 730, y: 370 }
+    ];
+
+    const linkData = [
+      { source: "client", target: "parser", color: "#38bdf8", label: "TRAIN MODEL ..." },
+      { source: "parser", target: "planner", color: "#38bdf8", label: "Logical plan" },
+      { source: "planner", target: "postgres", color: "#38bdf8", label: "Transactional state" },
+      { source: "planner", target: "cockroach", color: "#f97316", label: "Lease mgmt" },
+      { source: "postgres", target: "eventBus", color: "#38bdf8", label: "Enqueue tasks" },
+      { source: "eventBus", target: "workers", color: "#22c55e", label: "Dispatch jobs" },
+      { source: "workers", target: "agents", color: "#22c55e", label: "Status signals" },
+      { source: "agents", target: "postgres", color: "#38bdf8", label: "Update state" },
+      { source: "agents", target: "cockroach", color: "#f97316", label: "Coordination events" },
+      { source: "workers", target: "artifact", color: "#22c55e", label: "Push checkpoints" },
+      { source: "artifact", target: "client", color: "#38bdf8", label: "Serve results" }
+    ];
+
+    const nodeLookup = Object.fromEntries(nodeData.map((n) => [n.id, n]));
+
+    function curvedPath(d) {
+      const src = nodeLookup[d.source];
+      const tgt = nodeLookup[d.target];
+      const midX = (src.x + tgt.x) / 2;
+      const midY = (src.y + tgt.y) / 2 - 30;
+      return `M${src.x},${src.y} Q${midX},${midY} ${tgt.x},${tgt.y}`;
+    }
+
+    archSvg
+      .selectAll("path.link")
+      .data(linkData)
+      .enter()
+      .append("path")
+      .attr("class", "link")
+      .attr("d", curvedPath)
+      .attr("fill", "none")
+      .attr("stroke", (d) => d.color)
+      .attr("stroke-width", 2.5)
+      .attr("stroke-opacity", 0.7);
+
+    archSvg
+      .selectAll("rect.node")
+      .data(nodeData)
+      .enter()
+      .append("rect")
+      .attr("class", "node")
+      .attr("x", (d) => d.x - 90)
+      .attr("y", (d) => d.y - 42)
+      .attr("width", 180)
+      .attr("height", 84)
+      .attr("rx", 16)
+      .attr("ry", 16)
+      .attr("fill", "rgba(15, 23, 42, 0.9)")
+      .attr("stroke", "rgba(148, 163, 184, 0.5)")
+      .attr("stroke-width", 1.5)
+      .attr("filter", "url(#shadow)");
+
+    archSvg
+      .selectAll("text.node-label")
+      .data(nodeData)
+      .enter()
+      .append("text")
+      .attr("class", "node-label")
+      .attr("text-anchor", "middle")
+      .attr("x", (d) => d.x)
+      .attr("y", (d) => d.y - 8)
+      .selectAll("tspan")
+      .data((d) => d.label.split("\n"))
+      .enter()
+      .append("tspan")
+      .attr("x", (d, i, nodes) => d3.select(nodes[i].parentNode).attr("x"))
+      .attr("dy", (d, i) => (i === 0 ? 0 : 18))
+      .text((d) => d);
+
+    archSvg
+      .selectAll("text.link-label")
+      .data(linkData)
+      .enter()
+      .append("text")
+      .attr("class", "link-label")
+      .attr("fill", (d) => d.color)
+      .attr("font-size", 12)
+      .append("textPath")
+      .attr("xlink:href", (d, i) => `#path-${i}`)
+      .attr("startOffset", "50%")
+      .attr("text-anchor", "middle")
+      .text((d) => d.label);
+
+    // Provide IDs to the link paths for textPaths after they are in DOM
+    archSvg.selectAll("path.link").attr("id", (d, i) => `path-${i}`);
+
+    const defs = archSvg.append("defs");
+    const filter = defs.append("filter").attr("id", "shadow").attr("x", "-50%").attr("y", "-50%").attr("width", "200%").attr("height", "200%");
+    filter.append("feDropShadow").attr("dx", 0).attr("dy", 6).attr("stdDeviation", 8).attr("flood-color", "#0ea5e9").attr("flood-opacity", 0.25);
+
+    const flowButton = document.getElementById("run-flow");
+    const resetFlowButton = document.getElementById("reset-flow");
+    let flowInProgress = false;
+
+    function animateFlow() {
+      if (flowInProgress) return;
+      flowInProgress = true;
+      flowButton.disabled = true;
+      resetFlowButton.disabled = false;
+
+      const route = [
+        "client",
+        "parser",
+        "planner",
+        "postgres",
+        "eventBus",
+        "workers",
+        "agents",
+        "postgres",
+        "cockroach",
+        "artifact",
+        "client"
+      ];
+
+      const marker = archSvg
+        .append("circle")
+        .attr("r", 10)
+        .attr("fill", "#fcd34d")
+        .attr("stroke", "#fbbf24")
+        .attr("stroke-width", 2)
+        .attr("opacity", 0.95);
+
+      let step = 0;
+
+      function moveNext() {
+        if (step >= route.length - 1) {
+          flowInProgress = false;
+          return;
+        }
+        const from = nodeLookup[route[step]];
+        const to = nodeLookup[route[step + 1]];
+        marker
+          .attr("cx", from.x)
+          .attr("cy", from.y)
+          .transition()
+          .duration(850)
+          .ease(d3.easeCubicInOut)
+          .attr("cx", to.x)
+          .attr("cy", to.y)
+          .on("end", () => {
+            step += 1;
+            moveNext();
+          });
+      }
+
+      moveNext();
+      resetFlowButton.onclick = () => {
+        marker.remove();
+        flowInProgress = false;
+        flowButton.disabled = false;
+        resetFlowButton.disabled = true;
+        resetFlowButton.onclick = null;
+      };
+    }
+
+    flowButton.addEventListener("click", animateFlow);
+
+    // --- Training Progress ---
+    const trainingSvg = d3.select("#training-chart");
+    const trainingData = [
+      { epoch: 0, accuracy: 0.52, loss: 1.4 },
+      { epoch: 5, accuracy: 0.61, loss: 1.1 },
+      { epoch: 10, accuracy: 0.68, loss: 0.92 },
+      { epoch: 15, accuracy: 0.73, loss: 0.8 },
+      { epoch: 20, accuracy: 0.78, loss: 0.7 },
+      { epoch: 25, accuracy: 0.82, loss: 0.62 },
+      { epoch: 30, accuracy: 0.86, loss: 0.58 },
+      { epoch: 35, accuracy: 0.9, loss: 0.55 },
+      { epoch: 40, accuracy: 0.92, loss: 0.51 }
+    ];
+
+    const margin = { top: 40, right: 60, bottom: 50, left: 60 };
+    const width = 480 - margin.left - margin.right;
+    const height = 320 - margin.top - margin.bottom;
+
+    const trainingGroup = trainingSvg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const xScale = d3.scaleLinear().domain(d3.extent(trainingData, (d) => d.epoch)).range([0, width]);
+    const yScaleAcc = d3.scaleLinear().domain([0.5, 1]).range([height, 0]);
+    const yScaleLoss = d3.scaleLinear().domain([0.4, 1.5]).range([height, 0]);
+
+    trainingGroup.append("g").attr("transform", `translate(0,${height})`).attr("class", "x-axis").call(d3.axisBottom(xScale).ticks(5));
+    trainingGroup.append("g").attr("class", "y-axis-left").call(d3.axisLeft(yScaleAcc).tickFormat(d3.format(".0%")));
+    trainingGroup.append("g").attr("transform", `translate(${width},0)`).attr("class", "y-axis-right").call(d3.axisRight(yScaleLoss));
+
+    trainingGroup
+      .append("text")
+      .attr("x", width / 2)
+      .attr("y", height + 36)
+      .attr("text-anchor", "middle")
+      .attr("fill", "var(--muted)")
+      .text("Epochs");
+
+    trainingGroup
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -height / 2)
+      .attr("y", -42)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#38bdf8")
+      .text("Accuracy");
+
+    trainingGroup
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -height / 2)
+      .attr("y", width + 48)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#f97316")
+      .text("Loss");
+
+    const lineAcc = d3.line().x((d) => xScale(d.epoch)).y((d) => yScaleAcc(d.accuracy));
+    const lineLoss = d3
+      .line()
+      .curve(d3.curveMonotoneX)
+      .x((d) => xScale(d.epoch))
+      .y((d) => yScaleLoss(d.loss));
+
+    const accuracyPath = trainingGroup
+      .append("path")
+      .datum(trainingData.slice(0, 1))
+      .attr("fill", "none")
+      .attr("stroke", "#38bdf8")
+      .attr("stroke-width", 3)
+      .attr("stroke-linejoin", "round")
+      .attr("stroke-linecap", "round");
+
+    const lossPath = trainingGroup
+      .append("path")
+      .datum(trainingData.slice(0, 1))
+      .attr("fill", "none")
+      .attr("stroke", "#f97316")
+      .attr("stroke-width", 2.5)
+      .attr("stroke-linejoin", "round")
+      .attr("stroke-linecap", "round");
+
+    const focusPoint = trainingGroup.append("circle").attr("r", 5).attr("fill", "#38bdf8").attr("opacity", 0);
+
+    const trainingPlay = document.getElementById("play-training");
+    const trainingPause = document.getElementById("pause-training");
+    const trainingReset = document.getElementById("reset-training");
+
+    let trainingTimer = null;
+    let trainingIndex = 1;
+
+    function drawTraining(index) {
+      accuracyPath.datum(trainingData.slice(0, index)).attr("d", lineAcc);
+      lossPath.datum(trainingData.slice(0, index)).attr("d", lineLoss);
+      const last = trainingData[index - 1];
+      focusPoint.attr("cx", xScale(last.epoch)).attr("cy", yScaleAcc(last.accuracy)).attr("opacity", 1);
+    }
+
+    function playTraining() {
+      if (trainingTimer) return;
+      trainingPlay.disabled = true;
+      trainingPause.disabled = false;
+      trainingTimer = setInterval(() => {
+        trainingIndex += 1;
+        if (trainingIndex > trainingData.length) {
+          clearInterval(trainingTimer);
+          trainingTimer = null;
+          trainingPause.disabled = true;
+          return;
+        }
+        drawTraining(trainingIndex);
+      }, 900);
+    }
+
+    function pauseTraining() {
+      clearInterval(trainingTimer);
+      trainingTimer = null;
+      trainingPlay.disabled = false;
+      trainingPause.disabled = true;
+    }
+
+    function resetTraining() {
+      pauseTraining();
+      trainingIndex = 1;
+      accuracyPath.datum(trainingData.slice(0, 1)).attr("d", lineAcc);
+      lossPath.datum(trainingData.slice(0, 1)).attr("d", lineLoss);
+      focusPoint.attr("opacity", 0);
+      trainingPlay.disabled = false;
+      trainingPause.disabled = true;
+    }
+
+    trainingPlay.addEventListener("click", playTraining);
+    trainingPause.addEventListener("click", pauseTraining);
+    trainingReset.addEventListener("click", resetTraining);
+
+    drawTraining(trainingIndex);
+    trainingPause.disabled = true;
+
+    // --- Hyper-parameter tuning chart ---
+    const hyperSvg = d3.select("#hyper-chart");
+    const hyperMargin = { top: 40, right: 40, bottom: 50, left: 60 };
+    const hyperWidth = 480 - hyperMargin.left - hyperMargin.right;
+    const hyperHeight = 320 - hyperMargin.top - hyperMargin.bottom;
+
+    const hyperGroup = hyperSvg.append("g").attr("transform", `translate(${hyperMargin.left},${hyperMargin.top})`);
+
+    const trialScale = d3.scaleLinear().domain([1, 20]).range([0, hyperWidth]);
+    const scoreScale = d3.scaleLinear().domain([0.6, 0.95]).range([hyperHeight, 0]);
+    const lrScale = d3.scaleLog().domain([0.0005, 0.05]).range([hyperHeight, 0]);
+
+    hyperGroup.append("g").attr("transform", `translate(0,${hyperHeight})`).call(d3.axisBottom(trialScale).ticks(6));
+    hyperGroup.append("g").call(d3.axisLeft(scoreScale));
+    hyperGroup
+      .append("g")
+      .attr("transform", `translate(${hyperWidth},0)`)
+      .call(d3.axisRight(lrScale).ticks(4, ".0e"));
+
+    hyperGroup
+      .append("text")
+      .attr("x", hyperWidth / 2)
+      .attr("y", hyperHeight + 36)
+      .attr("text-anchor", "middle")
+      .attr("fill", "var(--muted)")
+      .text("Optimization Trial");
+
+    hyperGroup
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -hyperHeight / 2)
+      .attr("y", -44)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#22c55e")
+      .text("Validation Score");
+
+    hyperGroup
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -hyperHeight / 2)
+      .attr("y", hyperWidth + 50)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#facc15")
+      .text("Learning Rate");
+
+    const hyperScatter = hyperGroup.append("g");
+    const hyperLine = hyperGroup
+      .append("path")
+      .attr("fill", "none")
+      .attr("stroke", "#22c55e")
+      .attr("stroke-width", 2.5)
+      .attr("stroke-linejoin", "round")
+      .attr("stroke-linecap", "round");
+
+    const hyperBest = hyperGroup.append("circle").attr("r", 0).attr("stroke", "#fcd34d").attr("stroke-width", 3).attr("fill", "none");
+
+    const hyperPlay = document.getElementById("play-hyper");
+    const hyperReset = document.getElementById("reset-hyper");
+    const trialCountEl = document.getElementById("trial-count");
+    const bestTrialEl = document.getElementById("best-trial");
+
+    let hyperIndex = 0;
+    let hyperData = [];
+    let hyperTimer = null;
+
+    function simulateTrial() {
+      hyperIndex += 1;
+      const score = 0.62 + Math.random() * 0.3 + hyperIndex * 0.01;
+      const cappedScore = Math.min(score, 0.93 + Math.random() * 0.02);
+      const learningRate = 0.0007 * Math.pow(1.35, 20 - hyperIndex) + Math.random() * 0.005;
+      const batchSize = [32, 64, 128, 256][Math.floor(Math.random() * 4)];
+      const trial = { trial: hyperIndex, score: parseFloat(cappedScore.toFixed(3)), learningRate, batchSize };
+      hyperData.push(trial);
+      updateHyperChart();
+    }
+
+    function updateHyperChart() {
+      trialCountEl.textContent = `Trials: ${hyperData.length}`;
+      hyperScatter
+        .selectAll("circle")
+        .data(hyperData, (d) => d.trial)
+        .join((enter) =>
+          enter
+            .append("circle")
+            .attr("cx", (d) => trialScale(d.trial))
+            .attr("cy", (d) => scoreScale(d.score))
+            .attr("r", 0)
+            .attr("fill", "rgba(34, 197, 94, 0.65)")
+            .attr("stroke", "rgba(16, 185, 129, 0.95)")
+            .attr("stroke-width", 1.5)
+            .transition()
+            .duration(450)
+            .attr("r", 7)
+        );
+
+      hyperLine.datum(hyperData).attr("d", d3.line().x((d) => trialScale(d.trial)).y((d) => scoreScale(d.score)).curve(d3.curveMonotoneX));
+
+      const best = hyperData.reduce((a, b) => (b.score > a.score ? b : a), hyperData[0]);
+      hyperBest
+        .attr("cx", trialScale(best.trial))
+        .attr("cy", scoreScale(best.score))
+        .transition()
+        .duration(400)
+        .attr("r", 12);
+
+      bestTrialEl.textContent = `Best Trial: #${best.trial} (score ${best.score}, lr ${best.learningRate.toFixed(4)}, batch ${best.batchSize})`;
+    }
+
+    function playHyper() {
+      if (hyperTimer) return;
+      hyperPlay.disabled = true;
+      hyperReset.disabled = false;
+      hyperTimer = setInterval(() => {
+        if (hyperIndex >= 20) {
+          clearInterval(hyperTimer);
+          hyperTimer = null;
+          hyperPlay.disabled = false;
+          return;
+        }
+        simulateTrial();
+      }, 600);
+    }
+
+    function resetHyper() {
+      if (hyperTimer) {
+        clearInterval(hyperTimer);
+        hyperTimer = null;
+      }
+      hyperIndex = 0;
+      hyperData = [];
+      hyperScatter.selectAll("circle").remove();
+      hyperLine.attr("d", null);
+      hyperBest.attr("r", 0);
+      trialCountEl.textContent = "Trials: 0";
+      bestTrialEl.textContent = "Best Trial: —";
+      hyperPlay.disabled = false;
+      hyperReset.disabled = true;
+    }
+
+    hyperPlay.addEventListener("click", playHyper);
+    hyperReset.addEventListener("click", resetHyper);
+  </script>
+</body>
+</html>

@@ -18,6 +18,13 @@ DeclarativeML brings machine learning directly into the database layer using a n
 - **Pub/Sub Coordination**: Event-driven architecture with worker pools for model assembly and deployment
 - **Autonomous Agents**: Database-native processes that handle convergence detection, hyperparameter tuning, and system optimization
 
+### Interactive Architecture Visualization
+
+Open [`visualizations/database_that_learns.html`](visualizations/database_that_learns.html) in a modern browser to explore how a
+`TRAIN MODEL ...` statement travels through DeclarativeML's synchronous PostgreSQL layer, distributed CockroachDB coordination,
+event-driven worker pools, and autonomous agents. The interactive cards animate the control-plane flow, plot simulated training
+metrics over time, and show a hyper-parameter tuning loop progressing toward the best configuration.
+
 ## Core Principles
 
 1. **Database-Native Everything**: All ML operations, coordination, and state management happen within the database layer
