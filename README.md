@@ -1,5 +1,8 @@
 # DeclarativeML
 
+<img width="256" alt="I DECLARE MACHINE LEARNING!" src="https://github.com/user-attachments/assets/7d0c0e0e-3a23-4025-9411-1667c67717e3" />
+
+
 **The Database that Learns: Native Machine Learning Through Declarative SQL**
 
 DeclarativeML is a ground-up redesign of machine learning infrastructure for the post-Moore's Law era. When datasets become too large to move and compute becomes the bottleneck, ML workloads will shift from "move data to compute" back to "move compute to data." We're building the database-native ML platform for that future.
