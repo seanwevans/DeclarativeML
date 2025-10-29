@@ -479,17 +479,25 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         # build training query with properly quoted identifiers
         select_fields: List[sql.Composable] = []
         for feature in model.features:
-            if not any(ch in feature for ch in " ()+-*/="):
+            if _SIMPLE_IDENTIFIER_RE.fullmatch(feature):
                 select_fields.append(sql.Identifier(feature))
-            else:
+            elif "." in feature or any(ch in feature for ch in " ()+-*/="):
                 select_fields.append(sql.SQL(feature))
+            else:
+                select_fields.append(sql.Identifier(feature))
 
         select_fields.append(sql.Identifier(model.target))
+        source_fragment: sql.Composable
+        if model.source_is_identifier:
+            source_fragment = sql.Identifier(model.source)
+        else:
+            source_fragment = sql.SQL(model.source)
+
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
             .format(
                 fields=sql.SQL(", ").join(select_fields),
-                source=sql.Identifier(model.source),
+                source=source_fragment,
             )
             .as_string(None)
         )
