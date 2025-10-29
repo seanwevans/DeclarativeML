@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 from math import isclose
 from typing import Any, Dict, List, Optional
@@ -291,8 +292,15 @@ class TreeToModel(Transformer):
         return str(value)
 
     def feature_string(self, items):
-        (value,) = items
-        return f'"{value}"'
+        (token,) = items
+        raw = token.value if hasattr(token, "value") else str(token)
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+            # Convert the token contents to a Python string so escape sequences are handled
+            string_value = json.loads(raw)
+        else:
+            string_value = json.loads(f'"{raw}"')
+        escaped = string_value.replace('"', '""')
+        return f'"{escaped}"'
 
     def feature_kwarg(self, items):
         name, value = items
@@ -472,6 +480,20 @@ def parse(text: str) -> TrainModel | ComputeKernel:
     return model
 
 
+def _looks_like_single_identifier(clause: str) -> bool:
+    """Heuristically determine if a source clause should be treated as one identifier."""
+
+    if not clause:
+        return False
+    if any(ch.isspace() for ch in clause):
+        return False
+    if any(ch in ".()" for ch in clause):
+        return False
+    if clause[0] == "\"" and clause[-1] == "\"":
+        return False
+    return True
+
+
 def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
 
@@ -487,11 +509,13 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
                 select_fields.append(sql.Identifier(feature))
 
         select_fields.append(sql.Identifier(model.target))
-        source_fragment: sql.Composable
         if model.source_is_identifier:
             source_fragment = sql.Identifier(model.source)
         else:
-            source_fragment = sql.SQL(model.source)
+            if _looks_like_single_identifier(model.source):
+                source_fragment = sql.Identifier(model.source)
+            else:
+                source_fragment = _as_sql_fragment(model.source)
 
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
