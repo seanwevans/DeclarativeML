@@ -54,6 +54,10 @@ class TestParser(unittest.TestCase):
         self.assertFalse(model.source_is_identifier)
         sql_str = parser.compile_sql(model)
         self.assertIn("JOIN merchants", sql_str)
+        self.assertNotIn(
+            'FROM "transactions JOIN merchants ON transactions.merchant_id = merchants.id"',
+            sql_str,
+        )
 
     def test_parse_train_model_filtered_source(self):
         text = (
@@ -67,11 +71,10 @@ class TestParser(unittest.TestCase):
         )
         self.assertFalse(model.source_is_identifier)
         sql_str = parser.compile_sql(model)
-        expected_unquoted = "FROM (SELECT * FROM base WHERE active = TRUE) sub"
-        expected_quoted = 'FROM "(SELECT * FROM base WHERE active = TRUE) sub"'
-        self.assertTrue(
-            expected_unquoted in sql_str or expected_quoted in sql_str,
-            msg=f"Expected to find either '{expected_unquoted}' or '{expected_quoted}' in SQL: {sql_str}",
+        self.assertIn("FROM (SELECT * FROM base WHERE active = TRUE) sub", sql_str)
+        self.assertNotIn(
+            'FROM "(SELECT * FROM base WHERE active = TRUE) sub"',
+            sql_str,
         )
 
     def test_parse_train_model_with_options(self):

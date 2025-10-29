@@ -523,12 +523,9 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
 
         select_fields.append(sql.Identifier(model.target))
         if model.source_is_identifier:
-            source_fragment = sql.Identifier(model.source)
+            source_fragment: sql.Composable = sql.Identifier(model.source)
         else:
-            if _looks_like_single_identifier(model.source):
-                source_fragment = sql.Identifier(model.source)
-            else:
-                source_fragment = _as_sql_fragment(model.source)
+            source_fragment = _as_sql_fragment(model.source)
 
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
