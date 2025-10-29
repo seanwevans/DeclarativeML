@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 from math import isclose
 from typing import Any, Dict, List, Optional
@@ -291,8 +292,15 @@ class TreeToModel(Transformer):
         return str(value)
 
     def feature_string(self, items):
-        (value,) = items
-        return f'"{value}"'
+        (token,) = items
+        raw = token.value if hasattr(token, "value") else str(token)
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+            # Convert the token contents to a Python string so escape sequences are handled
+            string_value = json.loads(raw)
+        else:
+            string_value = json.loads(f'"{raw}"')
+        escaped = string_value.replace('"', '""')
+        return f'"{escaped}"'
 
     def feature_kwarg(self, items):
         name, value = items
@@ -485,11 +493,16 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
                 select_fields.append(sql.SQL(feature))
 
         select_fields.append(sql.Identifier(model.target))
+        if model.source_is_identifier:
+            source_fragment = sql.Identifier(model.source)
+        else:
+            source_fragment = _as_sql_fragment(model.source)
+
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
             .format(
                 fields=sql.SQL(", ").join(select_fields),
-                source=sql.Identifier(model.source),
+                source=source_fragment,
             )
             .as_string(None)
         )

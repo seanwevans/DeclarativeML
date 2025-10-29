@@ -101,6 +101,22 @@ class TestParser(unittest.TestCase):
             ],
         )
 
+    def test_feature_string_with_embedded_quotes(self):
+        text = (
+            'TRAIN MODEL quoted USING alg FROM source '
+            'PREDICT target WITH FEATURES("text \\"with\\" quotes")'
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(model.features, ['"text ""with"" quotes"'])
+
+        sql = parser.compile_sql(model)
+        match = re.search(r"feature_columns := ARRAY\[\s*(?:E)?'([^']*)'\]", sql)
+        self.assertIsNotNone(match)
+        literal_body = match.group(1)
+        decoded = literal_body.encode("utf-8").decode("unicode_escape")
+        final_literal = decoded.replace('\\"', '"')
+        self.assertEqual('"text ""with"" quotes"', final_literal)
+
     def test_compile_sql_with_feature_expressions(self):
         model = parser.TrainModel(
             name="m",
