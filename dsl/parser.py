@@ -501,10 +501,12 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         # build training query with properly quoted identifiers
         select_fields: List[sql.Composable] = []
         for feature in model.features:
-            if not any(ch in feature for ch in " ()+-*/="):
+            if _SIMPLE_IDENTIFIER_RE.fullmatch(feature):
                 select_fields.append(sql.Identifier(feature))
-            else:
+            elif "." in feature or any(ch in feature for ch in " ()+-*/="):
                 select_fields.append(sql.SQL(feature))
+            else:
+                select_fields.append(sql.Identifier(feature))
 
         select_fields.append(sql.Identifier(model.target))
         if model.source_is_identifier:
