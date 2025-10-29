@@ -54,6 +54,10 @@ class TestParser(unittest.TestCase):
         self.assertFalse(model.source_is_identifier)
         sql_str = parser.compile_sql(model)
         self.assertIn("JOIN merchants", sql_str)
+        self.assertNotIn(
+            'FROM "transactions JOIN merchants ON transactions.merchant_id = merchants.id"',
+            sql_str,
+        )
 
     def test_parse_train_model_filtered_source(self):
         text = (
@@ -68,6 +72,10 @@ class TestParser(unittest.TestCase):
         self.assertFalse(model.source_is_identifier)
         sql_str = parser.compile_sql(model)
         self.assertIn("FROM (SELECT * FROM base WHERE active = TRUE) sub", sql_str)
+        self.assertNotIn(
+            'FROM "(SELECT * FROM base WHERE active = TRUE) sub"',
+            sql_str,
+        )
 
     def test_parse_train_model_with_options(self):
         text = (
