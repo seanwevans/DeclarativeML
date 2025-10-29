@@ -119,6 +119,40 @@ class TestParser(unittest.TestCase):
         self.assertIn("DERIVED(amount * exchange_rate)", sql_str)
         self.assertIn("TRANSFORM(scale(log(amount + 1)))", sql_str)
 
+    def test_compile_sql_with_dotted_identifier(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=["amount", "customer.age"],
+        )
+        sql_str = parser.compile_sql(model)
+        match = re.search(r"training_data := '([^']*)'", sql_str)
+        self.assertIsNotNone(match)
+        training_query = match.group(1)
+        self.assertIn('"amount"', training_query)
+        self.assertIn("customer.age", training_query)
+        self.assertNotIn('"customer.age"', training_query)
+
+    def test_compile_sql_with_operator_expression(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=["amount", "amount + tax"],
+        )
+        sql_str = parser.compile_sql(model)
+        match = re.search(r"training_data := '([^']*)'", sql_str)
+        self.assertIsNotNone(match)
+        training_query = match.group(1)
+        self.assertIn('"amount"', training_query)
+        self.assertIn("amount + tax", training_query)
+        self.assertNotIn('"amount + tax"', training_query)
+
     def test_invalid_syntax_raises(self):
         with self.assertRaises(LarkError):
             parser.parse("TRAIN MODEL bad USING algo FROM tbl")
