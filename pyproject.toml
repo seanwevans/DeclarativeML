@@ -9,7 +9,7 @@ description = "DeclarativeML DSL compiler"
 authors = [{name = "DeclarativeML", email = "noreply@example.com"}]
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "lark",
     "psycopg[binary]"
