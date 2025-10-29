@@ -480,6 +480,20 @@ def parse(text: str) -> TrainModel | ComputeKernel:
     return model
 
 
+def _looks_like_single_identifier(clause: str) -> bool:
+    """Heuristically determine if a source clause should be treated as one identifier."""
+
+    if not clause:
+        return False
+    if any(ch.isspace() for ch in clause):
+        return False
+    if any(ch in ".()" for ch in clause):
+        return False
+    if clause[0] == "\"" and clause[-1] == "\"":
+        return False
+    return True
+
+
 def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
 
@@ -496,7 +510,10 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         if model.source_is_identifier:
             source_fragment = sql.Identifier(model.source)
         else:
-            source_fragment = _as_sql_fragment(model.source)
+            if _looks_like_single_identifier(model.source):
+                source_fragment = sql.Identifier(model.source)
+            else:
+                source_fragment = _as_sql_fragment(model.source)
 
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")

@@ -293,6 +293,19 @@ class TestParser(unittest.TestCase):
         self.assertIn('"fe;ature"', sql_str)
         self.assertIn('"tar;get"', sql_str)
 
+    def test_compile_sql_quotes_single_table_with_punctuation(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="user-events",
+            target="target",
+            features=["feature"],
+            source_is_identifier=False,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('FROM "user-events"', sql_str)
+
     def test_compile_sql_includes_checkpoint(self):
         model = parser.TrainModel(
             name="m",
