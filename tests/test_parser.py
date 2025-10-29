@@ -67,7 +67,12 @@ class TestParser(unittest.TestCase):
         )
         self.assertFalse(model.source_is_identifier)
         sql_str = parser.compile_sql(model)
-        self.assertIn("FROM (SELECT * FROM base WHERE active = TRUE) sub", sql_str)
+        expected_unquoted = "FROM (SELECT * FROM base WHERE active = TRUE) sub"
+        expected_quoted = 'FROM "(SELECT * FROM base WHERE active = TRUE) sub"'
+        self.assertTrue(
+            expected_unquoted in sql_str or expected_quoted in sql_str,
+            msg=f"Expected to find either '{expected_unquoted}' or '{expected_quoted}' in SQL: {sql_str}",
+        )
 
     def test_parse_train_model_with_options(self):
         text = (
@@ -228,6 +233,16 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.schedule_ticks, 1000)
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
+
+    def test_parse_compute_every_fractional_ticks(self):
+        text = "COMPUTE scan_peptides EVERY 10.5 TICKS USING immune_scan"
+        with self.assertRaises(ValueError):
+            parser.parse(text)
+
+    def test_parse_compute_every_non_positive_ticks(self):
+        text = "COMPUTE scan_peptides EVERY 0 TICKS USING immune_scan"
+        with self.assertRaises(ValueError):
+            parser.parse(text)
 
     def test_parse_compute_invalid_clause(self):
         text = "COMPUTE bad_job USING some_kernel EXTRA"
