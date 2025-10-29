@@ -324,7 +324,20 @@ class TreeToModel(Transformer):
         return ("output", items[0])
 
     def compute_every(self, items):
-        return ("schedule", int(items[0]))
+        value = items[0]
+        if isinstance(value, float):
+            if not value.is_integer():
+                raise ValueError("schedule ticks must be a positive integer")
+            value = int(value)
+        elif isinstance(value, int):
+            pass
+        else:
+            raise ValueError("schedule ticks must be a positive integer")
+
+        if value <= 0:
+            raise ValueError("schedule ticks must be a positive integer")
+
+        return ("schedule", value)
 
     def size_spec(self, items):
         if len(items) == 2:
