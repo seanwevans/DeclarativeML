@@ -109,6 +109,22 @@ class TestParser(unittest.TestCase):
             ],
         )
 
+    def test_feature_string_with_embedded_quotes(self):
+        text = (
+            'TRAIN MODEL quoted USING alg FROM source '
+            'PREDICT target WITH FEATURES("text \\"with\\" quotes")'
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(model.features, ['"text ""with"" quotes"'])
+
+        sql = parser.compile_sql(model)
+        match = re.search(r"feature_columns := ARRAY\[\s*(?:E)?'([^']*)'\]", sql)
+        self.assertIsNotNone(match)
+        literal_body = match.group(1)
+        decoded = literal_body.encode("utf-8").decode("unicode_escape")
+        final_literal = decoded.replace('\\"', '"')
+        self.assertEqual('"text ""with"" quotes"', final_literal)
+
     def test_compile_sql_with_feature_expressions(self):
         model = parser.TrainModel(
             name="m",
@@ -126,6 +142,40 @@ class TestParser(unittest.TestCase):
         self.assertIn('"amount"', sql_str)
         self.assertIn("DERIVED(amount * exchange_rate)", sql_str)
         self.assertIn("TRANSFORM(scale(log(amount + 1)))", sql_str)
+
+    def test_compile_sql_with_dotted_identifier(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=["amount", "customer.age"],
+        )
+        sql_str = parser.compile_sql(model)
+        match = re.search(r"training_data := '([^']*)'", sql_str)
+        self.assertIsNotNone(match)
+        training_query = match.group(1)
+        self.assertIn('"amount"', training_query)
+        self.assertIn("customer.age", training_query)
+        self.assertNotIn('"customer.age"', training_query)
+
+    def test_compile_sql_with_operator_expression(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=["amount", "amount + tax"],
+        )
+        sql_str = parser.compile_sql(model)
+        match = re.search(r"training_data := '([^']*)'", sql_str)
+        self.assertIsNotNone(match)
+        training_query = match.group(1)
+        self.assertIn('"amount"', training_query)
+        self.assertIn("amount + tax", training_query)
+        self.assertNotIn('"amount + tax"', training_query)
 
     def test_invalid_syntax_raises(self):
         with self.assertRaises(LarkError):
@@ -237,6 +287,16 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
 
+    def test_parse_compute_every_fractional_ticks(self):
+        text = "COMPUTE scan_peptides EVERY 10.5 TICKS USING immune_scan"
+        with self.assertRaises(ValueError):
+            parser.parse(text)
+
+    def test_parse_compute_every_non_positive_ticks(self):
+        text = "COMPUTE scan_peptides EVERY 0 TICKS USING immune_scan"
+        with self.assertRaises(ValueError):
+            parser.parse(text)
+
     def test_parse_compute_invalid_clause(self):
         text = "COMPUTE bad_job USING some_kernel EXTRA"
         with self.assertRaises(LarkError):
@@ -284,6 +344,19 @@ class TestParser(unittest.TestCase):
         self.assertIn('"weird;table"', sql_str)
         self.assertIn('"fe;ature"', sql_str)
         self.assertIn('"tar;get"', sql_str)
+
+    def test_compile_sql_quotes_single_table_with_punctuation(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="user-events",
+            target="target",
+            features=["feature"],
+            source_is_identifier=False,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('FROM "user-events"', sql_str)
 
     def test_compile_sql_includes_checkpoint(self):
         model = parser.TrainModel(
