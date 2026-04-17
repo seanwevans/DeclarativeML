@@ -14,10 +14,31 @@ dsl_grammar = r"""
 ?start: train_stmt
        | compute_stmt
 
-train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" sql_clause \
+train_stmt: "TRAIN" "MODEL" NAME "USING" algorithm "FROM" source_clause \
             "PREDICT" NAME features option*
 
-sql_clause: SQL_CLAUSE
+source_clause: source_atom+
+source_atom: NAME
+           | SIGNED_NUMBER
+           | ESCAPED_STRING
+           | SINGLE_QUOTED_STRING
+           | "."
+           | ","
+           | "("
+           | ")"
+           | "*"
+           | "+"
+           | "-"
+           | "/"
+           | "%"
+           | "="
+           | "!="
+           | "<>"
+           | "<="
+           | ">="
+           | "<"
+           | ">"
+           | ":"
 
 compute_stmt: "COMPUTE" NAME compute_from? compute_into? compute_every? \
               "USING" NAME kernel_opt*
@@ -111,11 +132,11 @@ COMP_OP: ">=" | "<=" | ">" | "<" | "!=" | "="
 %import common.WS
 %ignore WS
 
-SQL_CLAUSE: /(.|\n)+?(?=PREDICT\b)/
+SINGLE_QUOTED_STRING: /'(?:''|[^'])*'/
 """
 
 # instantiate the parser once at module import time
-_PARSER = Lark(dsl_grammar, start="start", parser="lalr")
+_PARSER = Lark(dsl_grammar, start="start", parser="lalr", propagate_positions=True)
 
 _FEATURE_EXPR_PARSER = Lark(
     r"""
@@ -264,6 +285,10 @@ class ComputeKernel:
 
 
 class TreeToModel(Transformer):
+    def __init__(self, source_text: str | None = None) -> None:
+        super().__init__()
+        self._source_text = source_text
+
     def NAME(self, token):
         return str(token)
 
@@ -377,10 +402,12 @@ class TreeToModel(Transformer):
     def name_list(self, items):
         return list(items)
 
-    def sql_clause(self, items):
-        token = items[0]
-        text = token.value if hasattr(token, "value") else str(token)
-        return text.strip()
+    @v_args(meta=True)
+    def source_clause(self, meta, items):
+        if self._source_text is not None:
+            return self._source_text[meta.start_pos : meta.end_pos].strip()
+
+        return " ".join(str(item) for item in items).strip()
 
     def compute_from(self, items):
         return ("inputs", items[0])
@@ -581,7 +608,7 @@ class TreeToModel(Transformer):
 def parse(text: str) -> TrainModel | ComputeKernel:
     tree = _PARSER.parse(text)
     try:
-        model = TreeToModel().transform(tree)
+        model = TreeToModel(source_text=text).transform(tree)
     except VisitError as e:
         if isinstance(e.orig_exc, ValueError):
             raise e.orig_exc
