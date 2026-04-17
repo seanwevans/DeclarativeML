@@ -115,15 +115,14 @@ class TestParser(unittest.TestCase):
             'PREDICT target WITH FEATURES("text \\"with\\" quotes")'
         )
         model = cast(parser.TrainModel, parser.parse(text))
-        self.assertEqual(model.features, ['"text ""with"" quotes"'])
+        self.assertEqual(model.features, ['"text \\"with\\" quotes"'])
 
         sql = parser.compile_sql(model)
         match = re.search(r"feature_columns := ARRAY\[\s*(?:E)?'([^']*)'\]", sql)
         self.assertIsNotNone(match)
         literal_body = match.group(1)
         decoded = literal_body.encode("utf-8").decode("unicode_escape")
-        final_literal = decoded.replace('\\"', '"')
-        self.assertEqual('"text ""with"" quotes"', final_literal)
+        self.assertEqual('"text \\"with\\" quotes"', decoded)
 
     def test_compile_sql_with_feature_expressions(self):
         model = parser.TrainModel(
@@ -157,8 +156,7 @@ class TestParser(unittest.TestCase):
         self.assertIsNotNone(match)
         training_query = match.group(1)
         self.assertIn('"amount"', training_query)
-        self.assertIn("customer.age", training_query)
-        self.assertNotIn('"customer.age"', training_query)
+        self.assertIn('"customer"."age"', training_query)
 
     def test_compile_sql_with_operator_expression(self):
         model = parser.TrainModel(
@@ -174,7 +172,7 @@ class TestParser(unittest.TestCase):
         self.assertIsNotNone(match)
         training_query = match.group(1)
         self.assertIn('"amount"', training_query)
-        self.assertIn("amount + tax", training_query)
+        self.assertIn('("amount" + "tax")', training_query)
         self.assertNotIn('"amount + tax"', training_query)
 
     def test_invalid_syntax_raises(self):
@@ -340,10 +338,8 @@ class TestParser(unittest.TestCase):
             target="tar;get",
             features=["fe;ature"],
         )
-        sql_str = parser.compile_sql(model)
-        self.assertIn('"weird;table"', sql_str)
-        self.assertIn('"fe;ature"', sql_str)
-        self.assertIn('"tar;get"', sql_str)
+        with self.assertRaises(ValueError):
+            parser.compile_sql(model)
 
     def test_compile_sql_quotes_single_table_with_punctuation(self):
         model = parser.TrainModel(
@@ -357,6 +353,73 @@ class TestParser(unittest.TestCase):
         )
         sql_str = parser.compile_sql(model)
         self.assertIn('FROM "user-events"', sql_str)
+
+    def test_compile_sql_blocks_unsafe_source_semicolon(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="transactions; DROP TABLE users",
+            target="target",
+            features=["feature"],
+            source_is_identifier=False,
+        )
+        with self.assertRaises(ValueError):
+            parser.compile_sql(model)
+
+    def test_compile_sql_blocks_unsafe_source_keywords(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="transactions WHERE 1=1 COMMIT",
+            target="target",
+            features=["feature"],
+            source_is_identifier=False,
+        )
+        with self.assertRaises(ValueError):
+            parser.compile_sql(model)
+
+    def test_compile_sql_allows_safe_join_source(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="transactions t JOIN merchants m ON t.merchant_id = m.id WHERE t.amount > 0",
+            target="target",
+            features=["t.amount", "m.category"],
+            source_is_identifier=False,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn("JOIN merchants m ON t.merchant_id = m.id", sql_str)
+        self.assertIn('"t"."amount"', sql_str)
+
+    def test_compile_sql_allows_safe_parenthesized_subquery(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="(SELECT * FROM transactions WHERE amount > 10) tx",
+            target="target",
+            features=["amount * 2", "sqrt(amount + 1)"],
+            source_is_identifier=False,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn("FROM (SELECT * FROM transactions WHERE amount > 10) tx", sql_str)
+        self.assertIn('("amount" * 2)', sql_str)
+        self.assertIn('"sqrt"(("amount" + 1))', sql_str)
+
+    def test_compile_sql_blocks_unsafe_feature_expression(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="source_table",
+            target="target_col",
+            features=["amount", "amount; DROP TABLE users"],
+        )
+        with self.assertRaises(ValueError):
+            parser.compile_sql(model)
 
     def test_compile_sql_includes_checkpoint(self):
         model = parser.TrainModel(
