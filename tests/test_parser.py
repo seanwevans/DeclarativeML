@@ -359,6 +359,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(stmt.kernel, "immune_scan")
         self.assertEqual(stmt.options["SHARED"], "1K")
 
+    def test_parse_compute_valid_block_and_shared_edges(self):
+        text = "COMPUTE scan_peptides USING immune_scan BLOCK 1 SHARED 0 GRID auto"
+        stmt = cast(parser.ComputeKernel, parser.parse(text))
+        self.assertEqual(stmt.options["BLOCK"], 1)
+        self.assertEqual(stmt.options["SHARED"], "0")
+        self.assertEqual(stmt.options["GRID"], "auto")
+
     def test_parse_compute_every_fractional_ticks(self):
         text = "COMPUTE scan_peptides EVERY 10.5 TICKS USING immune_scan"
         with self.assertRaises(ValueError):
@@ -373,6 +380,39 @@ class TestParser(unittest.TestCase):
         text = "COMPUTE bad_job USING some_kernel EXTRA"
         with self.assertRaises(LarkError):
             parser.parse(text)
+
+    def test_parse_compute_invalid_block_values(self):
+        with self.assertRaisesRegex(ValueError, "block size must be a positive integer"):
+            parser.parse("COMPUTE bad_job USING some_kernel BLOCK 0")
+
+        with self.assertRaisesRegex(ValueError, "block size must be a positive integer"):
+            parser.parse("COMPUTE bad_job USING some_kernel BLOCK -2")
+
+        with self.assertRaisesRegex(ValueError, "block size must be a positive integer"):
+            parser.parse("COMPUTE bad_job USING some_kernel BLOCK 32.5")
+
+    def test_parse_compute_invalid_shared_values(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "shared memory size must be a non-negative integer optionally suffixed with K, M, or G",
+        ):
+            parser.parse("COMPUTE bad_job USING some_kernel SHARED -1")
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "shared memory size must be a non-negative integer optionally suffixed with K, M, or G",
+        ):
+            parser.parse("COMPUTE bad_job USING some_kernel SHARED 1.5K")
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "shared memory size must be a non-negative integer optionally suffixed with K, M, or G",
+        ):
+            parser.parse("COMPUTE bad_job USING some_kernel SHARED 2KB")
+
+    def test_parse_compute_invalid_grid_values(self):
+        with self.assertRaisesRegex(ValueError, "grid value must be one of: auto"):
+            parser.parse("COMPUTE bad_job USING some_kernel GRID manual")
 
     def test_compute_stmt_unexpected_part(self):
         transformer = parser.TreeToModel()
