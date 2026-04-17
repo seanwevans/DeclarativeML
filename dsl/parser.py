@@ -117,8 +117,56 @@ SQL_CLAUSE: /(.|\n)+?(?=PREDICT\b)/
 # instantiate the parser once at module import time
 _PARSER = Lark(dsl_grammar, start="start", parser="lalr")
 
+_FEATURE_EXPR_PARSER = Lark(
+    r"""
+?start: feature_expr
+
+?feature_expr: feature_sum
+?feature_sum: feature_sum "+" feature_term   -> feature_add
+           | feature_sum "-" feature_term   -> feature_sub
+           | feature_term
+?feature_term: feature_term "*" feature_factor -> feature_mul
+             | feature_term "/" feature_factor -> feature_div
+             | feature_factor
+?feature_factor: "-" feature_factor         -> feature_neg
+               | feature_primary
+?feature_primary: feature_call
+                | feature_identifier
+                | feature_number
+                | feature_string
+                | "(" feature_expr ")"    -> feature_group
+
+feature_call: feature_identifier "(" feature_call_args? ")"
+feature_call_args: feature_call_arg ("," feature_call_arg)*
+feature_call_arg: NAME "=" feature_expr     -> feature_kwarg
+                | feature_expr
+feature_identifier: NAME ("." NAME)*
+feature_number: SIGNED_NUMBER
+feature_string: ESCAPED_STRING
+
+%import common.CNAME -> NAME
+%import common.SIGNED_NUMBER
+%import common.ESCAPED_STRING
+%import common.WS
+%ignore WS
+""",
+    start="start",
+    parser="lalr",
+)
+
 
 _SIMPLE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_RELATION_IDENTIFIER_RE = re.compile(
+    r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*|"(?:[^"]|"")+"'
+)
+_FORBIDDEN_SOURCE_TOKENS_RE = re.compile(
+    r"\b("
+    r"INSERT|UPDATE|DELETE|UPSERT|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|"
+    r"BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|LOCK|CALL|DO|EXECUTE|PREPARE|"
+    r"DEALLOCATE|COPY|VACUUM|ANALYZE|REFRESH|SET|SHOW|RESET|LISTEN|UNLISTEN|NOTIFY"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def _as_sql_fragment(text: str) -> sql.SQL:
@@ -314,15 +362,8 @@ class TreeToModel(Transformer):
         return str(value)
 
     def feature_string(self, items):
-        (token,) = items
-        raw = token.value if hasattr(token, "value") else str(token)
-        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
-            # Convert the token contents to a Python string so escape sequences are handled
-            string_value = json.loads(raw)
-        else:
-            string_value = json.loads(f'"{raw}"')
-        escaped = string_value.replace('"', '""')
-        return f'"{escaped}"'
+        (value,) = items
+        return f'"{value}"'
 
     def feature_kwarg(self, items):
         name, value = items
@@ -515,6 +556,134 @@ def parse(text: str) -> TrainModel | ComputeKernel:
     return model
 
 
+def _looks_like_single_identifier(clause: str) -> bool:
+    """Heuristically determine if a source clause should be treated as one identifier."""
+
+    if not clause:
+        return False
+    if any(ch.isspace() for ch in clause):
+        return False
+    if any(ch in ".()" for ch in clause):
+        return False
+    if clause[0] == "\"" and clause[-1] == "\"":
+        return False
+    return True
+
+
+def _validate_source_clause(clause: str) -> None:
+    """Validate non-identifier FROM source fragments to prevent SQL injection."""
+
+    if not clause:
+        raise ValueError("Training data source clause cannot be empty")
+    if ";" in clause:
+        raise ValueError("Training data source must not contain statement terminators")
+    if "--" in clause or "/*" in clause or "*/" in clause:
+        raise ValueError("Training data source must not contain SQL comments")
+    if _FORBIDDEN_SOURCE_TOKENS_RE.search(clause):
+        raise ValueError("Training data source contains disallowed SQL keywords")
+
+    text = clause.strip()
+    if text.startswith("("):
+        if not re.fullmatch(
+            r"\(\s*SELECT\b[\s\S]+\)\s*(?:AS\s+)?[A-Za-z_][A-Za-z0-9_]*\s*",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            raise ValueError(
+                "Training data subqueries must be parenthesized SELECT statements with an alias"
+            )
+        return
+
+    relation_identifier = rf"(?:{_RELATION_IDENTIFIER_RE.pattern})"
+    relation_pattern = (
+        rf"^{relation_identifier}"
+        rf"(?:\s+(?:AS\s+)?[A-Za-z_][A-Za-z0-9_]*)?"
+        rf"(?:\s+(?:(?:INNER|LEFT|RIGHT|FULL|CROSS)\s+)?JOIN\s+{relation_identifier}"
+        rf"(?:\s+(?:AS\s+)?[A-Za-z_][A-Za-z0-9_]*)?\s+ON\s+[\w\s\.\(\)=<>!+\-*/'\"%]+)*"
+        rf"(?:\s+WHERE\s+[\w\s\.\(\)=<>!+\-*/'\"%]+)?"
+        rf"(?:\s+GROUP\s+BY\s+[\w\s\.,\(\)]+)?"
+        rf"(?:\s+HAVING\s+[\w\s\.\(\)=<>!+\-*/'\"%]+)?"
+        rf"(?:\s+ORDER\s+BY\s+[\w\s\.,\(\)]+)?"
+        rf"(?:\s+LIMIT\s+\d+)?"
+        rf"\s*$"
+    )
+    if not re.fullmatch(relation_pattern, text, flags=re.IGNORECASE):
+        raise ValueError(
+            "Training data source must be a relation/join expression or a parenthesized subquery"
+        )
+
+
+class _FeatureSqlCompiler(Transformer):
+    def NAME(self, token):
+        return str(token)
+
+    def SIGNED_NUMBER(self, token):
+        text = str(token)
+        return float(text) if "." in text else int(text)
+
+    def ESCAPED_STRING(self, token):
+        return json.loads(str(token))
+
+    def feature_identifier(self, items):
+        identifiers = [sql.Identifier(part) for part in items]
+        return sql.SQL(".").join(identifiers)
+
+    def feature_number(self, items):
+        (value,) = items
+        return sql.Literal(value)
+
+    def feature_string(self, items):
+        (value,) = items
+        return sql.Literal(value)
+
+    def feature_group(self, items):
+        (inner,) = items
+        return sql.SQL("({inner})").format(inner=inner)
+
+    def feature_add(self, items):
+        left, right = items
+        return sql.SQL("({left} + {right})").format(left=left, right=right)
+
+    def feature_sub(self, items):
+        left, right = items
+        return sql.SQL("({left} - {right})").format(left=left, right=right)
+
+    def feature_mul(self, items):
+        left, right = items
+        return sql.SQL("({left} * {right})").format(left=left, right=right)
+
+    def feature_div(self, items):
+        left, right = items
+        return sql.SQL("({left} / {right})").format(left=left, right=right)
+
+    def feature_neg(self, items):
+        (value,) = items
+        return sql.SQL("(-{value})").format(value=value)
+
+    def feature_kwarg(self, items):
+        name, value = items
+        return sql.SQL("{name} => {value}").format(name=sql.Identifier(name), value=value)
+
+    def feature_call_args(self, items):
+        return items
+
+    def feature_call_arg(self, items):
+        return items[0]
+
+    def feature_call(self, items):
+        name = items[0]
+        args = items[1] if len(items) > 1 else []
+        return sql.SQL("{name}({args})").format(name=name, args=sql.SQL(", ").join(args))
+
+
+def _compile_feature_expression(feature: str) -> sql.Composable:
+    try:
+        tree = _FEATURE_EXPR_PARSER.parse(feature)
+        return _FeatureSqlCompiler().transform(tree)
+    except Exception as exc:
+        raise ValueError(f"Invalid feature expression: {feature}") from exc
+
+
 def compile_sql(model: TrainModel | ComputeKernel) -> str:
     import json
 
@@ -524,16 +693,18 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         for feature in model.features:
             if _SIMPLE_IDENTIFIER_RE.fullmatch(feature):
                 select_fields.append(sql.Identifier(feature))
-            elif "." in feature or any(ch in feature for ch in " ()+-*/="):
-                select_fields.append(sql.SQL(feature))
             else:
-                select_fields.append(sql.Identifier(feature))
+                select_fields.append(_compile_feature_expression(feature))
 
         select_fields.append(sql.Identifier(model.target))
         if model.source_is_identifier:
             source_fragment: sql.Composable = sql.Identifier(model.source)
         else:
-            source_fragment = _as_sql_fragment(model.source)
+            if _looks_like_single_identifier(model.source):
+                source_fragment = sql.Identifier(model.source)
+            else:
+                _validate_source_clause(model.source)
+                source_fragment = _as_sql_fragment(model.source)
 
         training_query = (
             sql.SQL("SELECT {fields} FROM {source}")
