@@ -119,6 +119,8 @@ _PARSER = Lark(dsl_grammar, start="start", parser="lalr")
 
 
 _SIMPLE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_SHARED_SIZE_RE = re.compile(r"^(0|[1-9][0-9]*)([KMG])?$")
+_GRID_ALLOWED_VALUES = {"auto"}
 
 
 def _as_sql_fragment(text: str) -> sql.SQL:
@@ -349,13 +351,34 @@ class TreeToModel(Transformer):
         return items[0]
 
     def block_opt(self, items):
-        return ("BLOCK", items[0])
+        value = items[0]
+
+        if isinstance(value, float):
+            if not value.is_integer():
+                raise ValueError("block size must be a positive integer")
+            value = int(value)
+        elif not isinstance(value, int):
+            raise ValueError("block size must be a positive integer")
+
+        if value <= 0:
+            raise ValueError("block size must be a positive integer")
+
+        return ("BLOCK", value)
 
     def grid_opt(self, items):
-        return ("GRID", items[0])
+        value = items[0]
+        if value not in _GRID_ALLOWED_VALUES:
+            allowed_values = ", ".join(sorted(_GRID_ALLOWED_VALUES))
+            raise ValueError(f"grid value must be one of: {allowed_values}")
+        return ("GRID", value)
 
     def shared_opt(self, items):
-        return ("SHARED", items[0])
+        value = str(items[0])
+        if _SHARED_SIZE_RE.fullmatch(value) is None:
+            raise ValueError(
+                "shared memory size must be a non-negative integer optionally suffixed with K, M, or G"
+            )
+        return ("SHARED", value)
 
     def split_entry(self, items):
         name, value = items
@@ -639,4 +662,3 @@ def compile_sql(model: TrainModel | ComputeKernel) -> str:
         return query.as_string(None)
 
     raise TypeError("Unsupported model type")
-
