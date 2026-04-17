@@ -458,6 +458,16 @@ class TreeToModel(Transformer):
 
     def checkpoint_stmt(self, items):
         interval = items[0]
+        if isinstance(interval, float):
+            if not interval.is_integer():
+                raise ValueError("checkpoint interval must be a positive integer")
+            interval = int(interval)
+        elif not isinstance(interval, int):
+            raise ValueError("checkpoint interval must be a positive integer")
+
+        if interval <= 0:
+            raise ValueError("checkpoint interval must be a positive integer")
+
         unit = items[1] if len(items) > 1 else None
         return CheckpointOption(interval=interval, unit=unit)
 
