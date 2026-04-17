@@ -338,6 +338,17 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.checkpoint.interval, 10)
         self.assertEqual(model.checkpoint.unit, "epochs")
 
+    def test_checkpoint_clause_invalid_intervals(self):
+        for interval in ("0", "-1", "2.5"):
+            text = (
+                "TRAIN MODEL m USING alg() FROM t PREDICT y WITH FEATURES(a) "
+                f"SAVE CHECKPOINTS EVERY {interval} epochs"
+            )
+            with self.assertRaisesRegex(
+                ValueError, "checkpoint interval must be a positive integer"
+            ):
+                parser.parse(text)
+
     def test_parse_compute(self):
         text = (
             "COMPUTE add_vectors FROM table(foo, bar) INTO column(baz) "
@@ -551,6 +562,18 @@ class TestParser(unittest.TestCase):
             _decode_sql_string_literal(_extract_named_arg(sql_str, "checkpoint_schedule"))
         )
         self.assertEqual(checkpoint_payload, {"interval": 5, "unit": "epochs"})
+
+    def test_compile_sql_includes_checkpoint_from_parsed_statement(self):
+        text = (
+            "TRAIN MODEL m USING alg() FROM data PREDICT target WITH FEATURES(feature) "
+            "SAVE CHECKPOINTS EVERY 10 epochs"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        sql_str = parser.compile_sql(model)
+        checkpoint_payload = json.loads(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "checkpoint_schedule"))
+        )
+        self.assertEqual(checkpoint_payload, {"interval": 10, "unit": "epochs"})
 
     def test_compile_sql_train_structure_with_multiple_options(self):
         model = parser.TrainModel(
