@@ -272,7 +272,7 @@ class TreeToModel(Transformer):
         return float(text) if "." in text else int(text)
 
     def ESCAPED_STRING(self, token):
-        return token.value.strip('"')
+        return json.loads(str(token))
 
     def value(self, items):
         return items[0]
@@ -365,7 +365,7 @@ class TreeToModel(Transformer):
 
     def feature_string(self, items):
         (value,) = items
-        return f'"{value}"'
+        return json.dumps(value)
 
     def feature_kwarg(self, items):
         name, value = items

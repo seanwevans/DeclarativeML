@@ -280,6 +280,40 @@ class TestParser(unittest.TestCase):
             ],
         )
 
+    def test_algorithm_param_string_escapes_are_decoded(self):
+        text = (
+            'TRAIN MODEL m USING alg(name="a\\\\\\"b", note="line1\\\\nline2") FROM t '
+            "PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.params,
+            [
+                ("name", 'a\\"b'),
+                ("note", "line1\\nline2"),
+            ],
+        )
+
+    def test_algorithm_param_nested_literal_string_escapes_are_decoded(self):
+        text = (
+            "TRAIN MODEL m USING alg("
+            'config={label: "a\\\\\\"b", nested: ["line1\\\\nline2", {inner: "x\\\\\\"y"}]}'
+            ") FROM t PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.params,
+            [
+                (
+                    "config",
+                    {
+                        "label": 'a\\"b',
+                        "nested": ["line1\\nline2", {"inner": 'x\\"y'}],
+                    },
+                )
+            ],
+        )
+
     def test_negative_param_values(self):
         text = (
             "TRAIN MODEL m USING alg(alpha=-0.1, depth=-5) FROM t "
