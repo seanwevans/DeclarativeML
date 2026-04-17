@@ -153,6 +153,32 @@ class TestParser(unittest.TestCase):
             sql_str,
         )
 
+    def test_parse_train_model_source_with_predict_in_string_literal(self):
+        text = (
+            "TRAIN MODEL filtered USING alg FROM transactions t "
+            "WHERE t.note = 'PREDICT' PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.source,
+            "transactions t WHERE t.note = 'PREDICT'",
+        )
+        self.assertEqual(model.target, "y")
+        self.assertFalse(model.source_is_identifier)
+
+    def test_parse_train_model_source_with_predict_in_alias(self):
+        text = (
+            "TRAIN MODEL filtered USING alg FROM (SELECT * FROM transactions) predict_alias "
+            "PREDICT y WITH FEATURES(a)"
+        )
+        model = cast(parser.TrainModel, parser.parse(text))
+        self.assertEqual(
+            model.source,
+            "(SELECT * FROM transactions) predict_alias",
+        )
+        self.assertEqual(model.target, "y")
+        self.assertFalse(model.source_is_identifier)
+
     def test_parse_train_model_with_options(self):
         text = (
             "TRAIN MODEL m USING alg() FROM data PREDICT y "
