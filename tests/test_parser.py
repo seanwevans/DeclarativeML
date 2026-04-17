@@ -10,6 +10,24 @@ from lark.exceptions import LarkError
 from dsl import parser
 
 
+def _extract_named_arg(sql_text: str, arg_name: str) -> str:
+    escaped_name = re.escape(arg_name)
+    match = re.search(
+        rf"(?<![A-Za-z0-9_]){escaped_name}(?![A-Za-z0-9_])\s*:=\s*"
+        rf"(?P<value>ARRAY\[(?:.|\n)*?\]|'(?:''|[^'])*'|-?\d+(?:\.\d+)?)\s*(?:,|\))",
+        sql_text,
+    )
+    if not match:
+        raise AssertionError(f"Argument '{arg_name}' not found in SQL: {sql_text}")
+    return match.group("value")
+
+
+def _decode_sql_string_literal(value: str) -> str:
+    if len(value) < 2 or value[0] != "'" or value[-1] != "'":
+        raise AssertionError(f"Expected SQL string literal, got: {value}")
+    return value[1:-1].replace("''", "'")
+
+
 class TestParser(unittest.TestCase):
     def test_parse_train_model(self):
         text = (
@@ -236,9 +254,7 @@ class TestParser(unittest.TestCase):
             ],
         )
         sql = parser.compile_sql(model)
-        match = re.search(r"algorithm_params := '([^']*)'", sql)
-        self.assertIsNotNone(match)
-        params_json = match.group(1)
+        params_json = _decode_sql_string_literal(_extract_named_arg(sql, "algorithm_params"))
         self.assertEqual(
             json.loads(params_json),
             {
@@ -370,8 +386,108 @@ class TestParser(unittest.TestCase):
         )
         sql_str = parser.compile_sql(model)
         self.assertIn("checkpoint_schedule :=", sql_str)
-        self.assertIn('"interval": 5', sql_str)
-        self.assertIn('"unit": "epochs"', sql_str)
+        checkpoint_payload = json.loads(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "checkpoint_schedule"))
+        )
+        self.assertEqual(checkpoint_payload, {"interval": 5, "unit": "epochs"})
+
+    def test_compile_sql_train_structure_with_multiple_options(self):
+        model = parser.TrainModel(
+            name="fraud_v2",
+            algorithm="xgboost",
+            params=[("max_depth", 6), ("learning_rate", 0.1)],
+            source="transactions",
+            target="is_fraud",
+            features=["amount", "merchant_type"],
+            split=parser.DataSplit({"training": 0.7, "validation": 0.2, "test": 0.1}),
+            validate=parser.ValidationOption(method="cv", params=[("folds", 5)]),
+            optimize_metric="f1_score",
+            checkpoint=parser.CheckpointOption(interval=10, unit="epochs"),
+        )
+        sql_str = parser.compile_sql(model)
+
+        # Smoke checks
+        self.assertIn("ml_train_model", sql_str)
+        self.assertIn("model_name :=", sql_str)
+        self.assertIn("training_data :=", sql_str)
+
+        # Structure checks
+        self.assertEqual(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "model_name")),
+            "fraud_v2",
+        )
+        self.assertEqual(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "algorithm")),
+            "xgboost",
+        )
+
+        training_data = _decode_sql_string_literal(_extract_named_arg(sql_str, "training_data"))
+        self.assertIn('FROM "transactions"', training_data)
+        self.assertIn('"amount"', training_data)
+        self.assertIn('"merchant_type"', training_data)
+        self.assertIn('"is_fraud"', training_data)
+
+        self.assertEqual(
+            json.loads(
+                _decode_sql_string_literal(_extract_named_arg(sql_str, "algorithm_params"))
+            ),
+            {"max_depth": 6, "learning_rate": 0.1},
+        )
+        self.assertEqual(
+            json.loads(_decode_sql_string_literal(_extract_named_arg(sql_str, "data_split"))),
+            {"training": 0.7, "validation": 0.2, "test": 0.1},
+        )
+        self.assertEqual(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "validate_method")),
+            "cv",
+        )
+        self.assertEqual(
+            json.loads(
+                _decode_sql_string_literal(_extract_named_arg(sql_str, "validate_params"))
+            ),
+            {"folds": 5},
+        )
+        self.assertEqual(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "optimize_metric")),
+            "f1_score",
+        )
+        self.assertEqual(
+            json.loads(
+                _decode_sql_string_literal(_extract_named_arg(sql_str, "checkpoint_schedule"))
+            ),
+            {"interval": 10, "unit": "epochs"},
+        )
+
+    def test_compile_sql_compute_structure_with_schedule_and_options(self):
+        stmt = parser.ComputeKernel(
+            name="scan_peptides",
+            kernel="immune_scan",
+            inputs=["signal_a", "signal_b"],
+            output="risk_score",
+            schedule_ticks=1000,
+            options={"BLOCK": 256, "GRID": "auto", "SHARED": "1K"},
+        )
+        sql_str = parser.compile_sql(stmt)
+
+        # Smoke checks
+        self.assertIn("ml_register_compute", sql_str)
+        self.assertIn("schedule_ticks :=", sql_str)
+        self.assertIn("options :=", sql_str)
+
+        # Structure checks
+        self.assertEqual(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "kernel_name")),
+            "immune_scan",
+        )
+        self.assertEqual(
+            _decode_sql_string_literal(_extract_named_arg(sql_str, "name")),
+            "scan_peptides",
+        )
+        self.assertEqual(_extract_named_arg(sql_str, "schedule_ticks"), "1000")
+        self.assertEqual(
+            json.loads(_decode_sql_string_literal(_extract_named_arg(sql_str, "options"))),
+            {"BLOCK": 256, "GRID": "auto", "SHARED": "1K"},
+        )
 
     def test_compile_sql_escapes_compute_identifiers(self):
         stmt = parser.ComputeKernel(
