@@ -59,6 +59,64 @@ class TestParser(unittest.TestCase):
         self.assertEqual(model.features, ["a", "b"])
         self.assertTrue(model.source_is_identifier)
 
+    def test_parse_train_model_source_identifier_boundaries(self):
+        cases = [
+            ("transactions", True),
+            ("analytics.transactions", False),
+            ('"Transactions"', False),
+            ("transactions JOIN merchants ON transactions.id = merchants.id", False),
+            ("(SELECT * FROM transactions) t", False),
+        ]
+        for source, expected in cases:
+            with self.subTest(source=source):
+                text = (
+                    f"TRAIN MODEL m USING alg FROM {source} "
+                    "PREDICT y WITH FEATURES(a)"
+                )
+                model = cast(parser.TrainModel, parser.parse(text))
+                self.assertEqual(model.source, source)
+                self.assertEqual(model.source_is_identifier, expected)
+
+    def test_compile_sql_uses_identifier_mode_for_simple_source(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="transactions",
+            target="y",
+            features=["a"],
+            source_is_identifier=True,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('FROM "transactions"', sql_str)
+
+    def test_compile_sql_uses_fragment_mode_for_dotted_source(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source="analytics.transactions",
+            target="y",
+            features=["a"],
+            source_is_identifier=False,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn("FROM analytics.transactions", sql_str)
+        self.assertNotIn('FROM "analytics.transactions"', sql_str)
+
+    def test_compile_sql_uses_fragment_mode_for_quoted_source(self):
+        model = parser.TrainModel(
+            name="m",
+            algorithm="alg",
+            params=[],
+            source='"Transactions"',
+            target="y",
+            features=["a"],
+            source_is_identifier=False,
+        )
+        sql_str = parser.compile_sql(model)
+        self.assertIn('FROM "Transactions"', sql_str)
+
     def test_parse_train_model_join_source(self):
         text = (
             "TRAIN MODEL joined USING alg FROM transactions JOIN merchants ON "
@@ -365,7 +423,7 @@ class TestParser(unittest.TestCase):
             source="user-events",
             target="target",
             features=["feature"],
-            source_is_identifier=False,
+            source_is_identifier=True,
         )
         sql_str = parser.compile_sql(model)
         self.assertIn('FROM "user-events"', sql_str)

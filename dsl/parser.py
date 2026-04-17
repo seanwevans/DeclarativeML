@@ -175,6 +175,28 @@ def _as_sql_fragment(text: str) -> sql.SQL:
     return sql.SQL(text.replace("{", "{{").replace("}", "}}"))
 
 
+def _is_identifier_source_clause(clause: str) -> bool:
+    """Return True only for a single unqualified, unquoted source identifier.
+
+    Accepted form:
+      - A single token without whitespace/dots/parentheses/quotes, such as
+        ``transactions``, ``training_data_2026``, or ``user-events``.
+
+    Rejected forms (compiled in SQL fragment mode instead):
+      - Schema-qualified names such as ``analytics.transactions``.
+      - Quoted identifiers such as ``"Transactions"``.
+      - Joins/subqueries/expressions such as ``a JOIN b`` or ``(SELECT ...) t``.
+    """
+
+    if not clause:
+        return False
+    if any(ch.isspace() for ch in clause):
+        return False
+    if any(ch in '.()"\\\'' for ch in clause):
+        return False
+    return True
+
+
 @dataclass
 class DataSplit:
     ratios: Dict[str, float]
@@ -460,7 +482,7 @@ class TreeToModel(Transformer):
         source_clause = source.strip() if isinstance(source, str) else str(source).strip()
         if not source_clause:
             raise ValueError("Training data source clause cannot be empty")
-        source_is_identifier = bool(_SIMPLE_IDENTIFIER_RE.fullmatch(source_clause))
+        source_is_identifier = _is_identifier_source_clause(source_clause)
         model = TrainModel(
             name=model_name,
             algorithm=alg_name,
